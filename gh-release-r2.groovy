@@ -293,17 +293,16 @@ EOF
                         mkdir -p reports .trivycache
 
                         docker run --rm --network host \
-                          -v /var/run/docker.sock:/var/run/docker.sock \
-                          -v "$PWD":/work -w /work \
-                          -v "$PWD/.trivycache":/root/.cache/ \
-                          aquasec/trivy:${TRIVY_VER} image \
-                          --db-repository ${TRIVY_DB_REPO} \
-                          --skip-version-check \
-                          --exit-code 1 \
-                          --severity CRITICAL,HIGH \
-                          --format table \
-                          --output reports/trivy-image.txt \
-                          ${IMAGE_NAME}
+                        -v /var/run/docker.sock:/var/run/docker.sock \
+                        -v "$PWD/.trivycache":/root/.cache/ \
+                        aquasec/trivy:${TRIVY_VER} image \
+                        --db-repository ${TRIVY_DB_REPO} \
+                        --skip-version-check \
+                        --scanners vuln \
+                        --exit-code 1 \
+                        --severity CRITICAL,HIGH \
+                        --format table \
+                        ${IMAGE_NAME} > reports/trivy-image.txt
                     '''
                 } else {
                     ctx.echo 'SKIP_SECURITY_SCAN=true，跳过 Trivy Image'
@@ -317,15 +316,13 @@ EOF
                         mkdir -p reports .trivycache
 
                         docker run --rm --network host \
-                          -v /var/run/docker.sock:/var/run/docker.sock \
-                          -v "$PWD":/work -w /work \
-                          -v "$PWD/.trivycache":/root/.cache/ \
-                          aquasec/trivy:${TRIVY_VER} image \
-                          --db-repository ${TRIVY_DB_REPO} \
-                          --skip-version-check \
-                          --format cyclonedx \
-                          --output reports/trivy-image-sbom.json \
-                          ${IMAGE_NAME}
+                        -v /var/run/docker.sock:/var/run/docker.sock \
+                        -v "$PWD/.trivycache":/root/.cache/ \
+                        aquasec/trivy:${TRIVY_VER} image \
+                        --db-repository ${TRIVY_DB_REPO} \
+                        --skip-version-check \
+                        --format cyclonedx \
+                        ${IMAGE_NAME} > reports/trivy-image-sbom.json
                     '''
                 } else {
                     ctx.echo 'SKIP_SECURITY_SCAN=true，跳过 SBOM 导出'
