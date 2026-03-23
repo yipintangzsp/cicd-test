@@ -1,5 +1,5 @@
 properties([
-  pipelineTriggers([pollSCM('H/2 * * * *')]),
+  
   disableConcurrentBuilds(),
   buildDiscarder(logRotator(numToKeepStr: '30', artifactNumToKeepStr: '20')),
   parameters([
