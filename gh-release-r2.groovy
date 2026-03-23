@@ -166,55 +166,63 @@ EOF
                             TASK_FILE=reports/sonar-report-task.txt
 
                             if [ ! -f "$TASK_FILE" ]; then
-                              echo "⚠️ 未找到 Sonar report-task.txt，跳过质量门禁轮询"
-                              exit 0
+                            echo "⚠️ 未找到 Sonar report-task.txt，跳过质量门禁轮询"
+                            exit 0
                             fi
 
                             CE_TASK_URL=$(grep '^ceTaskUrl=' "$TASK_FILE" | cut -d= -f2-)
                             if [ -z "$CE_TASK_URL" ]; then
-                              echo "⚠️ 未解析到 ceTaskUrl，跳过质量门禁轮询"
-                              exit 0
+                            echo "⚠️ 未解析到 ceTaskUrl，跳过质量门禁轮询"
+                            exit 0
                             fi
+
+                            mkdir -p reports
+                            docker rm -f temp-sonar-gate || true
+                            docker run -d --name temp-sonar-gate --network host curlimages/curl:8.6.0 sleep 3600
 
                             i=0
                             STATUS="PENDING"
                             ANALYSIS_ID=""
 
                             while [ "$i" -lt 30 ]; do
-                              CE_JSON=$(curl -fsS -u ${SONAR_TOKEN}: "$CE_TASK_URL")
-                              STATUS=$(echo "$CE_JSON" | grep -o '"status":"[^"]*"' | head -n1 | cut -d'"' -f4)
-                              ANALYSIS_ID=$(echo "$CE_JSON" | grep -o '"analysisId":"[^"]*"' | head -n1 | cut -d'"' -f4 || true)
+                            CE_JSON=$(docker exec temp-sonar-gate sh -c "curl -fsS -u ${SONAR_TOKEN}: '$CE_TASK_URL'")
+                            STATUS=$(echo "$CE_JSON" | grep -o '"status":"[^"]*"' | head -n1 | cut -d'"' -f4)
+                            ANALYSIS_ID=$(echo "$CE_JSON" | grep -o '"analysisId":"[^"]*"' | head -n1 | cut -d'"' -f4 || true)
 
-                              echo "Sonar CE status=$STATUS"
+                            echo "$CE_JSON" > reports/sonar-ce-task.json
+                            echo "Sonar CE status=$STATUS"
 
-                              if [ "$STATUS" = "SUCCESS" ]; then
+                            if [ "$STATUS" = "SUCCESS" ]; then
                                 break
-                              fi
+                            fi
 
-                              if [ "$STATUS" = "FAILED" ] || [ "$STATUS" = "CANCELED" ]; then
-                                echo "$CE_JSON" > reports/sonar-ce-task.json
+                            if [ "$STATUS" = "FAILED" ] || [ "$STATUS" = "CANCELED" ]; then
                                 echo "❌ Sonar CE task failed"
+                                docker rm -f temp-sonar-gate
                                 exit 1
-                              fi
+                            fi
 
-                              i=$((i+1))
-                              sleep 5
+                            i=$((i+1))
+                            sleep 5
                             done
 
                             if [ "$STATUS" != "SUCCESS" ]; then
-                              echo "❌ Sonar Quality Gate wait timeout"
-                              exit 1
+                            echo "❌ Sonar Quality Gate wait timeout"
+                            docker rm -f temp-sonar-gate
+                            exit 1
                             fi
 
                             if [ -z "$ANALYSIS_ID" ]; then
-                              echo "❌ Sonar analysisId 为空"
-                              exit 1
+                            echo "❌ Sonar analysisId 为空"
+                            docker rm -f temp-sonar-gate
+                            exit 1
                             fi
 
-                            curl -fsS -u ${SONAR_TOKEN}: "${SONAR_URL}/api/qualitygates/project_status?analysisId=${ANALYSIS_ID}" > reports/sonar-quality-gate.json
+                            docker exec temp-sonar-gate sh -c "curl -fsS -u ${SONAR_TOKEN}: '${SONAR_URL}/api/qualitygates/project_status?analysisId=${ANALYSIS_ID}'" > reports/sonar-quality-gate.json
                             GATE_STATUS=$(grep -o '"status":"[^"]*"' reports/sonar-quality-gate.json | head -n1 | cut -d'"' -f4)
 
                             echo "Sonar Quality Gate=$GATE_STATUS"
+                            docker rm -f temp-sonar-gate
                             [ "$GATE_STATUS" = "OK" ]
                         '''
                     }
@@ -222,7 +230,6 @@ EOF
                     ctx.echo 'SKIP_SECURITY_SCAN=true，跳过 Sonar 质量门禁'
                 }
             }
-
             ctx.stage('3. 产物构建 (Maven Build)') {
                 ctx.unstash 'workspace-src'
                 ctx.sh '''
