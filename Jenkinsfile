@@ -4,8 +4,8 @@ properties([
   buildDiscarder(logRotator(numToKeepStr: '30', artifactNumToKeepStr: '20')),
   parameters([
     choice(name: 'SCRIPT_NAME', choices: [
-      'gh-release-r1',
-      'gh-release-r2'
+      'gh-release-r2',
+      'gh-release-r1'
     ], description: '选择 GitHub 流水线快照版本'),
     choice(name: 'DEPLOY_ENV', choices: ['dev', 'test', 'prod'], description: '选择部署环境'),
     booleanParam(name: 'SKIP_SECURITY_SCAN', defaultValue: false, description: '跳过 Sonar/Trivy 安全扫描'),
