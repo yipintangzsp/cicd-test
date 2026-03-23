@@ -408,25 +408,27 @@ EOF
             ctx.stage('9. GitOps 多环境分发') {
                 if (!p.DRY_RUN) {
                     ctx.dir('config-repo') {
-                        ctx.checkout([
-                            $class: 'GitSCM',
-                            branches: [[name: 'main']],
-                            userRemoteConfigs: [[url: "${ctx.env.CONFIG_REPO_URL}", credentialsId: "${ctx.env.GITOPS_CREDENTIALS}"]]
-                        ])
+                        ctx.checkout(
+                            changelog: false,
+                            poll: false,
+                            scm: [
+                                $class: 'GitSCM',
+                                branches: [[name: 'main']],
+                                userRemoteConfigs: [[
+                                    url: "${ctx.env.CONFIG_REPO_URL}",
+                                    credentialsId: "${ctx.env.GITOPS_CREDENTIALS}"
+                                ]]
+                            ]
+                        )
 
                         ctx.script {
                             def manifestPath = "${p.DEPLOY_ENV}/deployment.yaml"
-                            ctx.env.GITOPS_MANIFEST_PATH = manifestPath
-                            ctx.env.PREVIOUS_IMAGE = ctx.sh(
-                                script: "awk '/image:/{print \$2; exit}' ${manifestPath}",
-                                returnStdout: true
-                            ).trim()
 
                             ctx.sh """
                                 set -eux
                                 mkdir -p ../meta
                                 test -f ${manifestPath}
-                                echo '${ctx.env.PREVIOUS_IMAGE}' > ../meta/previous-image.txt
+                                awk '/image:/{print \$2; exit}' ${manifestPath} > ../meta/gitops-image-before.txt
                                 sed -i 's|image: .*|image: ${ctx.env.IMAGE_NAME}|g' ${manifestPath}
                                 grep -n 'image:' ${manifestPath}
                                 git config user.email 'jenkins@devops.local'
@@ -443,9 +445,9 @@ EOF
                                 ctx.sh '''
                                     set -eux
                                     if git log -1 --pretty=%s | grep -q "ci(gh-r2): deploy"; then
-                                      git push http://${GIT_USERNAME}:${GIT_PASSWORD}@gitlab-service/root/hello-app-config.git HEAD:main
+                                    git push http://${GIT_USERNAME}:${GIT_PASSWORD}@gitlab-service/root/hello-app-config.git HEAD:main
                                     else
-                                      echo "无配置变更，跳过 git push"
+                                    echo "无配置变更，跳过 git push"
                                     fi
                                 '''
                             }
