@@ -264,7 +264,7 @@ EOF
             ctx.stage('5. 业务镜像入库 (Docker Push)') {
                 ctx.sh '''
                     set -eux
-                    docker build --no-cache \
+                    docker build --network host --no-cache \
                       --label app.name=${APP_NAME} \
                       --label git.commit=${GIT_COMMIT_ID} \
                       --label git.branch=${GIT_BRANCH_NAME} \
