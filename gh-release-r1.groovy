@@ -99,7 +99,7 @@ EOF
                                     -Dsonar.token=${SONAR_TOKEN} \
                                     -Dsonar.projectKey=${APP_NAME} \
                                     -Dsonar.sources=. \
-                                    -Dsonar.exclusions=/*.js,/*.html
+                                    -Dsonar.exclusions=/*.js,/*.html,Dockerfile
                                   docker rm -f temp-sonar-scan
                                 else
                                   echo "⚠️ 未检测到 pom.xml，跳过 SonarQube"

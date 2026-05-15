@@ -107,7 +107,7 @@ EOF
                                     -Dsonar.token=${SONAR_TOKEN} \
                                     -Dsonar.projectKey=${APP_NAME} \
                                     -Dsonar.sources=. \
-                                    -Dsonar.exclusions=/*.js,/*.html
+                                    -Dsonar.exclusions=/*.js,/*.html,Dockerfile
                                   docker cp temp-sonar-scan:/usr/src/target/sonar/report-task.txt reports/sonar-report-task.txt || true
                                   docker rm -f temp-sonar-scan
                                 else
