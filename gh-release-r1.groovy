@@ -214,14 +214,19 @@ EOF
                     }
 
                     ctx.env.KAFKA_HOST = kafkaHost
+                    ctx.env.ES_EFFECTIVE_URL = ctx.sh(
+                        script: "kubectl get svc elasticsearch -n default -o jsonpath='http://{.spec.clusterIP}:9200' 2>/dev/null || echo ${ctx.env.ES_URL}",
+                        returnStdout: true
+                    ).trim()
 
                     ctx.sh '''
                         set -eux
                         docker rm -f temp-infra-check || true
+                        trap 'docker rm -f temp-infra-check >/dev/null 2>&1 || true' EXIT
                         docker run -d --name temp-infra-check --network host alpine:3.20 sleep 3600
 
-                        echo "👉 检查 Elasticsearch: ${ES_URL}"
-                        docker exec temp-infra-check sh -c "wget -q -O /dev/null ${ES_URL}"
+                        echo "👉 检查 Elasticsearch: ${ES_EFFECTIVE_URL}"
+                        docker exec temp-infra-check sh -c "wget -q -O /dev/null ${ES_EFFECTIVE_URL}"
 
                         echo "👉 检查 Kafka: ${KAFKA_HOST}:${KAFKA_PORT}"
                         docker exec temp-infra-check sh -c "nc -z -w 5 ${KAFKA_HOST} ${KAFKA_PORT}"
@@ -231,8 +236,6 @@ EOF
 
                         echo "👉 检查 Flink Host Header 入口"
                         docker exec temp-infra-check sh -c "wget -q -O /dev/null --header='Host: ${FLINK_HOST}' http://127.0.0.1/overview || true"
-
-                        docker rm -f temp-infra-check
                     '''
                 }
             }
