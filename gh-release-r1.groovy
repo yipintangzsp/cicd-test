@@ -205,7 +205,7 @@ EOF
             ctx.stage('7. 基建健康度巡检 (Kafka / ES / Registry / Flink)') {
                 ctx.script {
                     def kafkaHost = ctx.sh(
-                        script: "kubectl get pod ${ctx.env.KAFKA_POD} -n ${ctx.env.KAFKA_NS} -o jsonpath='{.status.podIP}'",
+                        script: "kubectl get pod ${ctx.env.KAFKA_POD} -n ${ctx.env.KAFKA_NS} -o jsonpath='{.status.podIP}' 2>/dev/null || kubectl get pod -n ${ctx.env.KAFKA_NS} -l app=kafka -o jsonpath='{.items[0].status.podIP}'",
                         returnStdout: true
                     ).trim()
 
@@ -219,10 +219,9 @@ EOF
                         set -eux
                         docker rm -f temp-infra-check || true
                         docker run -d --name temp-infra-check --network host alpine:3.20 sleep 3600
-                        docker exec temp-infra-check sh -c "apk add --no-cache curl busybox-extras >/dev/null"
 
                         echo "👉 检查 Elasticsearch: ${ES_URL}"
-                        docker exec temp-infra-check sh -c "curl -fsS ${ES_URL} >/dev/null"
+                        docker exec temp-infra-check sh -c "wget -q -O /dev/null ${ES_URL}"
 
                         echo "👉 检查 Kafka: ${KAFKA_HOST}:${KAFKA_PORT}"
                         docker exec temp-infra-check sh -c "nc -z -w 5 ${KAFKA_HOST} ${KAFKA_PORT}"
@@ -231,7 +230,7 @@ EOF
                         docker exec temp-infra-check sh -c "nc -z -w 5 127.0.0.1 30050"
 
                         echo "👉 检查 Flink Host Header 入口"
-                        docker exec temp-infra-check sh -c "curl -fsS -H 'Host: ${FLINK_HOST}' http://127.0.0.1/overview >/dev/null || true"
+                        docker exec temp-infra-check sh -c "wget -q -O /dev/null --header='Host: ${FLINK_HOST}' http://127.0.0.1/overview || true"
 
                         docker rm -f temp-infra-check
                     '''
