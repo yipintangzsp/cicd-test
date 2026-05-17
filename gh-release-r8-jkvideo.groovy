@@ -312,7 +312,7 @@ if kubectl get deployment jkvideo-web -n ${K8S_NAMESPACE} >/dev/null 2>&1; then
   kubectl exec -n ${K8S_NAMESPACE} "$JK_POD" -- wget -qO- http://127.0.0.1:80/ >/dev/null
   JK_NODEPORT=$(kubectl get svc jkvideo-web -n ${K8S_NAMESPACE} -o jsonpath='{.spec.ports[0].nodePort}' 2>/dev/null || true)
   if [ -n "$JK_NODEPORT" ]; then
-    curl -fsS "http://127.0.0.1:${JK_NODEPORT}/" >/dev/null
+    curl -fsS "http://192.168.1.58:${JK_NODEPORT}/" >/dev/null
     echo "JKVideo URL: http://192.168.1.58:${JK_NODEPORT}/"
   fi
 fi
