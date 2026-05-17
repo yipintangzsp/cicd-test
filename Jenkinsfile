@@ -3,20 +3,26 @@ properties([
   disableConcurrentBuilds(),
   buildDiscarder(logRotator(numToKeepStr: '30', artifactNumToKeepStr: '20')),
   parameters([
-    choice(name: 'SCRIPT_NAME', choices: [
-      'gh-release-r2',
-      'gh-release-r1'
-    ], description: '选择 GitHub 流水线快照版本'),
-    choice(name: 'DEPLOY_ENV', choices: ['dev', 'test', 'prod'], description: '选择部署环境'),
-    booleanParam(name: 'SKIP_SECURITY_SCAN', defaultValue: false, description: '跳过 Sonar/Trivy 安全扫描'),
-    booleanParam(name: 'RUN_UNIT_TESTS', defaultValue: true, description: '执行单元测试'),
-    booleanParam(name: 'RUN_SMOKE_TEST', defaultValue: true, description: '执行部署后烟雾测试'),
-    booleanParam(name: 'DRY_RUN', defaultValue: false, description: '仅做构建与校验，不执行发布'),
-    choice(name: 'FLINK_RUN_MODE', choices: ['run', 'skip'], description: '是否执行 Flink 任务发布'),
-    string(name: 'K8S_NAMESPACE', defaultValue: 'ns-apps', description: '应用部署后的命名空间'),
-    string(name: 'APP_HEALTH_URL', defaultValue: 'http://hello-app.ns-apps.svc.cluster.local:8080/actuator/health', description: '部署后健康检查地址')
-  ])
-])
+	    choice(name: 'SCRIPT_NAME', choices: [
+	      'gh-release-r8-jkvideo',
+	      'gh-release-r2',
+	      'gh-release-r1'
+	    ], description: 'Select GitHub pipeline snapshot version'),
+	    choice(name: 'DEPLOY_ENV', choices: ['dev', 'test', 'prod'], description: 'Deployment environment'),
+	    booleanParam(name: 'SKIP_SECURITY_SCAN', defaultValue: false, description: 'Skip Sonar and Trivy checks'),
+	    booleanParam(name: 'RUN_UNIT_TESTS', defaultValue: true, description: 'Run unit tests'),
+	    booleanParam(name: 'RUN_SMOKE_TEST', defaultValue: true, description: 'Run post-deploy smoke tests'),
+	    booleanParam(name: 'DRY_RUN', defaultValue: false, description: 'Build and validate only; do not publish'),
+	    choice(name: 'FLINK_RUN_MODE', choices: ['run', 'skip'], description: 'Run or skip Flink job publish'),
+	    string(name: 'K8S_NAMESPACE', defaultValue: 'ns-apps', description: 'Kubernetes namespace'),
+	    string(name: 'APP_HEALTH_URL', defaultValue: 'http://hello-app.ns-apps.svc.cluster.local/', description: 'Application health URL'),
+	    booleanParam(name: 'BUILD_JKVIDEO', defaultValue: true, description: 'Build JKVideo web frontend'),
+	    string(name: 'JKVIDEO_REPO_URL', defaultValue: 'http://gitlab-service/root/JKVideo.git', description: 'JKVideo Git repository URL'),
+	    string(name: 'JKVIDEO_BRANCH', defaultValue: 'main', description: 'JKVideo branch'),
+	    choice(name: 'JKVIDEO_PLATFORMS', choices: ['web', 'android+web', 'android'], description: 'JKVideo target platform'),
+	    booleanParam(name: 'JKVIDEO_RUN_JEST', defaultValue: true, description: 'Run JKVideo Jest checks')
+	  ])
+	])
 
 node {
   timestamps {

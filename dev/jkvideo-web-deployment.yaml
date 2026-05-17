@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jkvideo-web
+  namespace: ns-apps
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: jkvideo-web
+  template:
+    metadata:
+      labels:
+        app: jkvideo-web
+    spec:
+      containers:
+      - name: jkvideo-web
+        image: 127.0.0.1:30050/jkvideo-web:github
+        ports:
+        - containerPort: 80
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        resources:
+          requests:
+            cpu: 20m
+            memory: 64Mi
+          limits:
+            cpu: 200m
+            memory: 192Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jkvideo-web
+  namespace: ns-apps
+spec:
+  type: NodePort
+  selector:
+    app: jkvideo-web
+  ports:
+  - name: http
+    port: 80
+    targetPort: 80
+    nodePort: 30088
