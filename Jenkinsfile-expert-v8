@@ -58,7 +58,7 @@ pipeline {
     }
 
     parameters {
-        choice(name: 'PIPELINE_VERSION', choices: ['Jenkinsfile-expert-v11', 'Jenkinsfile-expert-v10', 'Jenkinsfile-expert-v9', 'Jenkinsfile-v8-jkvideo', 'Jenkinsfile-expert-v8', 'Jenkinsfile-expert-v7', 'Jenkinsfile-expert-v6', 'Jenkinsfile-expert-v5', 'Jenkinsfile-expert-v4', 'Jenkinsfile-expert-v3', 'Jenkinsfile-expert-v2', 'Jenkinsfile_v2测试通过', 'Jenkinsfile_v2', 'Jenkinsfile-v1'], description: '选择要运行的 Jenkinsfile 版本，按大版本到低版本排列。')
+        choice(name: 'PIPELINE_VERSION', choices: ['Jenkinsfile-expert-v11', 'Jenkinsfile-expert-v10', 'Jenkinsfile-expert-v9', 'Jenkinsfile-v8-jkvideo', 'Jenkinsfile-expert-v8', 'Jenkinsfile-expert-v7', 'Jenkinsfile-expert-v6', 'Jenkinsfile-expert-v5', 'Jenkinsfile-expert-v4', 'Jenkinsfile-expert-v3', 'Jenkinsfile-expert-v2', 'Jenkinsfile-v2-tested', 'Jenkinsfile_v2', 'Jenkinsfile-v1'], description: '选择要运行的 Jenkinsfile 版本，按大版本到低版本排列。')
         choice(name: 'DEPLOY_ENV', choices: ['dev', 'test', 'prod'], description: '选择部署环境')
         booleanParam(name: 'SKIP_SECURITY_SCAN', defaultValue: false, description: '跳过 Sonar/Trivy 安全扫描')
         booleanParam(name: 'RUN_UNIT_TESTS', defaultValue: true, description: '执行单元测试')

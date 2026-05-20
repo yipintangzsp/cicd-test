@@ -1,0 +1,172 @@
+// ============================================================
+// 企业级 CI/CD 流水线 v2.2
+// ============================================================
+
+pipeline {
+    agent any
+
+    triggers {
+        gitlab(triggerOnPush: true, triggerOnMergeRequest: true, branchFilterType: 'All')
+    }
+
+    parameters {
+        choice(name: 'BRANCH_NAME', choices: ['devops-2.0', 'main'], description: '选择构建分支')
+        string(name: 'BASE_VERSION', defaultValue: 'v1.0', description: '镜像版本前缀')
+        string(name: 'APPROVE_TIMEOUT', defaultValue: '15', description: '人工审批超时时间（分钟）')
+        string(name: 'NOTIFY_WEBHOOK', defaultValue: '', description: 'Webhook 通知地址')
+    }
+
+    environment {
+        HARBOR_URL     = '192.168.1.58:8081'
+        HARBOR_PROJECT = 'devops'
+        APP_NAME       = 'hello-app'
+
+        GIT_SHORT_HASH = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
+        IMAGE_TAG      = "${params.BASE_VERSION}.${BUILD_NUMBER}-${GIT_SHORT_HASH}"
+        FULL_IMAGE     = "${HARBOR_URL}/${HARBOR_PROJECT}/${APP_NAME}:${IMAGE_TAG}"
+
+        NS_STAGING = 'ns-apps'
+        NS_PROD    = 'ns-ops'
+
+        SONAR_URL    = 'http://sonarqube-sonarqube.sonarqube.svc.cluster.local:9000'
+        SONAR_CRED   = 'sonar-token'
+        HARBOR_CRED  = 'harbor-creds'
+    }
+
+    options {
+        timeout(time: 60, unit: 'MINUTES')
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+        disableConcurrentBuilds()
+        timestamps()
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout([
+                    $class: 'GitSCM',
+                    branches: [[name: "*/${params.BRANCH_NAME}"]],
+                    userRemoteConfigs: scm.userRemoteConfigs
+                ])
+                echo "✅ 代码拉取完成 | 分支: ${params.BRANCH_NAME} | Commit: ${GIT_SHORT_HASH}"
+            }
+        }
+
+        stage('Stage 1 | SonarQube Quality Gate') {
+            steps {
+                script {
+                    withCredentials([string(credentialsId: "${SONAR_CRED}", variable: 'SONAR_TOKEN')]) {
+                        def scannerHome = tool 'SonarScanner'
+                        nodejs('nodejs') {
+                            sh """
+                                /var/jenkins_home/tools/hudson.plugins.sonar.SonarRunnerInstallation/SonarScanner/bin/sonar-scanner \
+                                  -Dsonar.host.url=${SONAR_URL} \
+                                  -Dsonar.token=\$SONAR_TOKEN \
+                                  -Dsonar.projectKey=${APP_NAME}-${params.BRANCH_NAME} \
+                                  -Dsonar.projectName="${APP_NAME} [${params.BRANCH_NAME}]"
+                            """
+                        }
+
+                        def taskId = sh(
+                            script: "grep ceTaskId .scannerwork/report-task.txt | cut -d'=' -f2",
+                            returnStdout: true
+                        ).trim()
+
+                        timeout(time: 5, unit: 'MINUTES') {
+                            def taskStatus = ''
+                            while (taskStatus != 'SUCCESS' && taskStatus != 'FAILED' && taskStatus != 'CANCELLED') {
+                                sleep(time: 10, unit: 'SECONDS')
+                                taskStatus = sh(
+                                    script: """
+                                        curl -s -u \$SONAR_TOKEN: \
+                                          '${SONAR_URL}/api/ce/task?id=${taskId}' \
+                                          | grep -o '"status":"[^"]*"' | cut -d'"' -f4
+                                    """,
+                                    returnStdout: true
+                                ).trim()
+                            }
+
+                            if (taskStatus != 'SUCCESS') {
+                                error "❌ SonarQube 分析任务失败"
+                            }
+
+                            def qgStatus = sh(
+                                script: """
+                                    curl -s -u \$SONAR_TOKEN: \
+                                      '${SONAR_URL}/api/qualitygates/project_status?projectKey=${APP_NAME}-${params.BRANCH_NAME}' \
+                                      | grep -o '"status":"[^"]*"' | head -1 | cut -d'"' -f4
+                                """,
+                                returnStdout: true
+                            ).trim()
+
+                            if (qgStatus != 'OK') {
+                                error "❌ Quality Gate 卡点拦截！状态: ${qgStatus}"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Stage 2 | Build & Push Image') {
+            steps {
+                script {
+                    sh "docker build -t ${FULL_IMAGE} ."
+                    withCredentials([usernamePassword(
+                        credentialsId: "${HARBOR_CRED}",
+                        usernameVariable: 'HARBOR_USER',
+                        passwordVariable: 'HARBOR_PASS'
+                    )]) {
+                        sh """
+                            echo "\$HARBOR_PASS" | docker login ${HARBOR_URL} -u "\$HARBOR_USER" --password-stdin
+                            docker push ${FULL_IMAGE}
+                        """
+                    }
+                    sh "docker rmi ${FULL_IMAGE} || true"
+                }
+            }
+        }
+
+        stage('Stage 3-A | Deploy to Staging') {
+            steps {
+                script {
+                    sh """
+                        kubectl create deployment ${APP_NAME} --image=${FULL_IMAGE} -n ${NS_STAGING} --dry-run=client -o yaml | kubectl apply -f -
+                        kubectl rollout status deployment/${APP_NAME} -n ${NS_STAGING} --timeout=180s
+                    """
+                }
+            }
+        }
+
+        stage('Stage 3-B | Manual Approval') {
+            steps {
+                script {
+                    timeout(time: params.APPROVE_TIMEOUT.toInteger(), unit: 'MINUTES') {
+                        input(
+                            message: "🚦 Staging 验证完毕，是否发布到 Production？",
+                            ok: '✅ 批准发布到生产环境',
+                            submitter: 'admin,release-manager'
+                        )
+                    }
+                }
+            }
+        }
+
+        stage('Stage 3-C | Deploy to Production') {
+            steps {
+                script {
+                    sh """
+                        kubectl create deployment ${APP_NAME} --image=${FULL_IMAGE} -n ${NS_PROD} --dry-run=client -o yaml | kubectl apply -f -
+                        kubectl rollout status deployment/${APP_NAME} -n ${NS_PROD} --timeout=300s
+                    """
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            cleanWs()
+        }
+    }
+}

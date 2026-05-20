@@ -13,7 +13,7 @@ def pipelineVersions = [
     'Jenkinsfile-expert-v4',
     'Jenkinsfile-expert-v3',
     'Jenkinsfile-expert-v2',
-    'Jenkinsfile_v2测试通过',
+    'Jenkinsfile-v2-tested',
     'Jenkinsfile_v2',
     'Jenkinsfile-v1'
 ]
