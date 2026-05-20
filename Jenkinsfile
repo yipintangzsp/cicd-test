@@ -83,7 +83,11 @@ properties([
 
 node {
     stage('Select Jenkinsfile') {
-        checkout scm
+        if (binding.variables.containsKey('scm')) {
+            checkout scm
+        } else {
+            echo 'No Jenkins scm binding detected; using workspace prepared by GitHub job wrapper.'
+        }
         def selected = (params.PIPELINE_VERSION ?: 'Jenkinsfile-expert-v11').trim()
         if (!pipelineVersions.contains(selected)) {
             error "Unsupported PIPELINE_VERSION: ${selected}"
