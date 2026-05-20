@@ -83,10 +83,10 @@ properties([
 
 node {
     stage('Select Jenkinsfile') {
-        if (binding.variables.containsKey('scm')) {
-            checkout scm
-        } else {
+        if (env.JOB_NAME == 'github-cicd-test') {
             echo 'No Jenkins scm binding detected; using workspace prepared by GitHub job wrapper.'
+        } else {
+            checkout scm
         }
         def selected = (params.PIPELINE_VERSION ?: 'Jenkinsfile-expert-v11').trim()
         if (!pipelineVersions.contains(selected)) {
