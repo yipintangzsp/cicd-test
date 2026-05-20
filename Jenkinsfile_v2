@@ -54,7 +54,7 @@ pipeline {
         stage('① 拉取代码') {
             steps {
                 echo "🚀 拉取代码，分支: ${env.GIT_BRANCH ?: 'main'}"
-                checkout([$class: 'GitSCM', branches: [[name: '*/main']], userRemoteConfigs: [[url: '/var/jenkins_home/github-cache/cicd-test.git']]])
+                checkout([$class: 'GitSCM', branches: [[name: '*/main']], userRemoteConfigs: [[url: 'https://github.com/yipintangzsp/cicd-test.git']]])
             }
         }
 

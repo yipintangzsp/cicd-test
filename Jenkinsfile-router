@@ -86,7 +86,7 @@ node {
         if (env.JOB_NAME == 'github-cicd-test') {
             echo 'No Jenkins scm binding detected; using workspace prepared by GitHub job wrapper.'
         } else {
-            checkout([$class: 'GitSCM', branches: [[name: '*/main']], userRemoteConfigs: [[url: '/var/jenkins_home/github-cache/cicd-test.git']]])
+            checkout([$class: 'GitSCM', branches: [[name: '*/main']], userRemoteConfigs: [[url: 'https://github.com/yipintangzsp/cicd-test.git']]])
         }
         def selected = (params.PIPELINE_VERSION ?: 'Jenkinsfile-expert-v11').trim()
         if (!pipelineVersions.contains(selected)) {
