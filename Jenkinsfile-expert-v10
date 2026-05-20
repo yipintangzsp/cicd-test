@@ -549,7 +549,7 @@ spec:
         - --no-autoupdate
         - run
         - --token
-        - \$(CLOUDFLARE_TUNNEL_TOKEN)
+        - \\$(CLOUDFLARE_TUNNEL_TOKEN)
         env:
         - name: CLOUDFLARE_TUNNEL_TOKEN
           valueFrom:
