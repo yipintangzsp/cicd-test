@@ -22,8 +22,7 @@ public class KafkaMonitorJob {
 
         // 2. 配置 Kafka 数据源
         KafkaSource<String> source = KafkaSource.<String>builder()
-                // ⚠️ 记得把这里换成你 K8s 集群里真实的 Kafka 地址和端口
-                .setBootstrapServers("10.42.0.210:9092") 
+                .setBootstrapServers("kafka.ns-bigdata.svc.cluster.local:9092")
                 .setTopics("system-logs") // 监听的 Topic
                 .setGroupId("flink-devops-group") // 消费组 ID
                 .setStartingOffsets(OffsetsInitializer.latest()) // 从最新数据开始读

@@ -1,0 +1,36 @@
+# ============================================================
+#  ServiceMonitor — Prometheus 自动抓取 hello-app Metrics
+#
+#  前置条件：
+#    - Prometheus Operator 已部署（kube-prometheus-stack）
+#    - Prometheus 的 serviceMonitorSelector 包含 label:
+#        release: prometheus  （或与集群实际配置一致）
+#
+#  验证：
+#    http://192.168.1.58:30090/targets
+#    搜索 hello-app，状态应为 UP
+# ============================================================
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: hello-app-monitor
+  namespace: monitoring       # 与 Prometheus 同 namespace
+  labels:
+    # ⚠️ 此 label 须与 Prometheus CRD 的 serviceMonitorSelector 匹配
+    release: prometheus
+    app: hello-app
+spec:
+  # 被监控的 Service 所在 namespace
+  namespaceSelector:
+    matchNames:
+      - default
+  # 选中 hello-app Service
+  selector:
+    matchLabels:
+      app: hello-app
+  # 抓取配置
+  endpoints:
+    - port: http              # 对应 service.yaml 中 ports[].name: http
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s

@@ -1,0 +1,285 @@
+{
+  "__inputs": [],
+  "__requires": [
+    {"type": "grafana", "id": "grafana", "name": "Grafana", "version": "9.0.0"},
+    {"type": "datasource", "id": "prometheus", "name": "Prometheus", "version": "1.0.0"}
+  ],
+  "id": null,
+  "uid": "devops-2.0-fullstack",
+  "title": "DevOps-2.0-Full-Stack",
+  "description": "hello-app V3.0 全栈监控大屏 — 镜像版本 / CPU / 内存 / HTTP 状态分布",
+  "tags": ["devops", "hello-app", "v2.0"],
+  "timezone": "Asia/Shanghai",
+  "schemaVersion": 36,
+  "version": 1,
+  "refresh": "30s",
+  "time": {"from": "now-1h", "to": "now"},
+  "timepicker": {},
+  "templating": {
+    "list": [
+      {
+        "name": "namespace",
+        "type": "constant",
+        "query": "default",
+        "label": "Namespace",
+        "hide": 0
+      }
+    ]
+  },
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": "-- Grafana --",
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "🏷️ 当前运行镜像版本",
+      "description": "从 K8s kube_pod_container_info 获取实际运行的镜像 Tag",
+      "gridPos": {"h": 5, "w": 12, "x": 0, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]},
+          "mappings": [],
+          "unit": "string"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "/^image$/", "values": false},
+        "orientation": "auto",
+        "textMode": "value",
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "text": {"titleSize": 14, "valueSize": 16}
+      },
+      "targets": [
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "expr": "label_replace(kube_pod_container_info{namespace=\"default\", container=\"hello-app\"}, \"image\", \"$2\", \"image\", \".*/(.*:.*)\") == 1",
+          "legendFormat": "{{image}}",
+          "instant": true,
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "🟢 可用副本数",
+      "gridPos": {"h": 5, "w": 6, "x": 12, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "red", "value": null},
+              {"color": "yellow", "value": 1},
+              {"color": "green", "value": 2}
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "orientation": "auto",
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "expr": "kube_deployment_status_available_replicas{namespace=\"default\", deployment=~\"hello-app.*\"}",
+          "legendFormat": "可用副本",
+          "instant": true,
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "🔄 Pod 重启次数 (1h)",
+      "gridPos": {"h": 5, "w": 6, "x": 18, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 3},
+              {"color": "red", "value": 10}
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "colorMode": "background",
+        "graphMode": "area"
+      },
+      "targets": [
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "expr": "increase(kube_pod_container_status_restarts_total{namespace=\"default\", pod=~\"hello-app.*\"}[1h])",
+          "legendFormat": "重启次数",
+          "instant": true,
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "📈 CPU 使用率 (cores)",
+      "description": "hello-app Pod 实时 CPU 消耗",
+      "gridPos": {"h": 9, "w": 12, "x": 0, "y": 5},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "unit": "cores",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 15,
+            "gradientMode": "opacity",
+            "spanNulls": false,
+            "showPoints": "never"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "red", "value": 0.18}
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": {"mode": "multi", "sort": "none"},
+        "legend": {"displayMode": "list", "placement": "bottom"}
+      },
+      "targets": [
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"default\", pod=~\"hello-app.*\", container!=\"\", container!=\"POD\"}[2m])) by (pod)",
+          "legendFormat": "CPU — {{pod}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "🧠 内存使用量 (MiB)",
+      "description": "hello-app Pod 实时内存消耗",
+      "gridPos": {"h": 9, "w": 12, "x": 12, "y": 5},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "unit": "decmbytes",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 15,
+            "gradientMode": "opacity",
+            "spanNulls": false,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": {"mode": "multi", "sort": "none"},
+        "legend": {"displayMode": "list", "placement": "bottom"}
+      },
+      "targets": [
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "expr": "sum(container_memory_working_set_bytes{namespace=\"default\", pod=~\"hello-app.*\", container!=\"\", container!=\"POD\"}) by (pod) / 1024 / 1024",
+          "legendFormat": "内存 — {{pod}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "piechart",
+      "title": "🌐 HTTP 响应状态码分布 (Nginx Ingress)",
+      "description": "来自 Nginx Ingress 或应用 /metrics 的 HTTP 状态码统计",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 14},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {"color": {"mode": "palette-classic"}, "unit": "short"},
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {"calcs": ["sum"], "fields": "", "values": false},
+        "pieType": "donut",
+        "tooltip": {"mode": "single", "sort": "none"},
+        "legend": {"displayMode": "table", "placement": "right", "values": ["value", "percent"]}
+      },
+      "targets": [
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "expr": "sum(increase(nginx_ingress_controller_requests{service=~\"hello-app.*\"}[5m])) by (status)",
+          "legendFormat": "HTTP {{status}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "table",
+      "title": "📋 Pod 详情（镜像 + 状态 + 启动时间）",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 14},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {"unit": "short"},
+        "overrides": [
+          {"matcher": {"id": "byName", "options": "image"}, "properties": [{"id": "custom.width", "value": 300}]},
+          {"matcher": {"id": "byName", "options": "pod"}, "properties": [{"id": "custom.width", "value": 200}]}
+        ]
+      },
+      "options": {
+        "sortBy": [{"displayName": "pod", "desc": false}],
+        "footer": {"show": false, "reducer": ["sum"], "fields": ""}
+      },
+      "transformations": [
+        {"id": "labelsToFields", "options": {"mode": "columns", "keepLabels": ["pod", "container", "image", "namespace"]}},
+        {"id": "filterFieldsByName", "options": {"include": {"names": ["pod", "container", "image"]}}}
+      ],
+      "targets": [
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "expr": "kube_pod_container_info{namespace=\"default\", container=\"hello-app\"}",
+          "legendFormat": "",
+          "instant": true,
+          "refId": "A"
+        }
+      ]
+    }
+  ]
+}

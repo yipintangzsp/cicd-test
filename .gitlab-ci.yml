@@ -1,0 +1,33 @@
+stages:
+  - scan
+  - build
+  - deploy
+
+sonarqube_scan:
+  stage: scan
+  tags:
+    - shell
+  script:
+    - /opt/sonar-scanner/bin/sonar-scanner -Dsonar.projectKey=hello-app -Dsonar.sources=. -Dsonar.host.url=http://sonar.devops.local -Dsonar.token=sqp_765e73106aefb3a7802b5b332c8e0421a0c6996a -Dsonar.javascript.skip=true
+
+docker_build:
+  stage: build
+  tags:
+    - shell
+  script:
+    - echo "构建并强行导入 K3s..."
+    - docker build -t hello-app:latest .
+    - docker save hello-app:latest -o hello-app.tar
+    - sudo k3s ctr images import hello-app.tar
+    - rm hello-app.tar
+
+k8s_deploy:
+  stage: deploy
+  tags:
+    - shell
+  script:
+    - echo "正在应用最新的部署..."
+    # 强制让 K8s 重新加载最新的本地镜像
+    - kubectl delete deployment hello-app-deployment || true
+    - kubectl apply -f deployment.yaml
+    - kubectl apply -f service.yaml

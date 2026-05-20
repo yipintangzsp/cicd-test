@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hello-app-deployment
+  namespace: default
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: hello-app
+  template:
+    metadata:
+      labels:
+        app: hello-app
+      # ⚠️ 极其关键：告诉 Prometheus 自动过来拉取监控数据
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "80"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+      - name: hello-app
+        image: IMAGE_PLACEHOLDER
+        ports:
+        - containerPort: 80
+        resources:
+          limits:
+            cpu: "200m"
+            memory: "256Mi"
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hello-app-svc
+  namespace: default
+spec:
+  type: NodePort
+  selector:
+    app: hello-app
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+      nodePort: 30088

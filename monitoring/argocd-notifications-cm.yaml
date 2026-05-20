@@ -1,0 +1,114 @@
+# ============================================================
+#  ArgoCD Notifications V3.0 — 钉钉 actionCard 告警
+#
+#  消息格式：钉钉 actionCard（含「查看 ArgoCD」「查看 Grafana」按钮）
+#  告警终端：钉钉（唯一）
+#
+#  部署：
+#    kubectl apply -f monitoring/argocd-notifications-cm.yaml
+#    kubectl rollout restart deployment/argocd-notifications-controller -n argocd
+# ============================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-notifications-cm
+  namespace: argocd
+data:
+  # ── 钉钉 Webhook 服务配置 ──────────────────────────────────
+  service.webhook.dingtalk: |
+    url: https://oapi.dingtalk.com/robot/send?access_token=a09f532db2a96d203d6d2ed9c5b581211155b6ee84ea8a702bbeb5f69122a413
+    headers:
+      - name: Content-Type
+        value: application/json
+
+  # ── 模板：同步失败（actionCard + 跳转按钮）────────────────
+  template.app-sync-failed: |
+    webhook:
+      dingtalk:
+        method: POST
+        body: |
+          {
+            "msgtype": "actionCard",
+            "actionCard": {
+              "title": "❌ ArgoCD 同步失败",
+              "text": "### ❌ ArgoCD 同步失败\n\n**应用**: {{.app.metadata.name}}\n\n**分支**: devops-2.0\n\n**原因**: {{.app.status.operationState.message}}\n\n**时间**: {{.app.status.operationState.finishedAt}}\n\n> 请立即检查 ArgoCD UI 或 Grafana 告警",
+              "btnOrientation": "0",
+              "btns": [
+                {
+                  "title": "🔍 查看 ArgoCD 详情",
+                  "actionURL": "http://192.168.1.58:30180/applications/{{.app.metadata.name}}"
+                },
+                {
+                  "title": "📊 查看 Grafana 大屏",
+                  "actionURL": "http://192.168.1.58:30030/d/devops-2.0-fullstack"
+                }
+              ]
+            }
+          }
+
+  # ── 模板：健康状态恶化 ─────────────────────────────────────
+  template.app-health-degraded: |
+    webhook:
+      dingtalk:
+        method: POST
+        body: |
+          {
+            "msgtype": "actionCard",
+            "actionCard": {
+              "title": "🚨 应用健康状态恶化",
+              "text": "### 🚨 hello-app 健康状态异常\n\n**应用**: {{.app.metadata.name}}\n\n**状态**: {{.app.status.health.status}}\n\n**信息**: {{.app.status.health.message}}\n\n**建议**: `kubectl rollout undo deployment/hello-app-v2`",
+              "btnOrientation": "0",
+              "btns": [
+                {
+                  "title": "🔍 查看 ArgoCD",
+                  "actionURL": "http://192.168.1.58:30180/applications/{{.app.metadata.name}}"
+                },
+                {
+                  "title": "📊 查看 Grafana",
+                  "actionURL": "http://192.168.1.58:30030/d/devops-2.0-fullstack"
+                }
+              ]
+            }
+          }
+
+  # ── 模板：同步成功 ─────────────────────────────────────────
+  template.app-sync-succeeded: |
+    webhook:
+      dingtalk:
+        method: POST
+        body: |
+          {
+            "msgtype": "actionCard",
+            "actionCard": {
+              "title": "✅ ArgoCD 同步成功",
+              "text": "### ✅ 部署已同步\n\n**应用**: {{.app.metadata.name}}\n\n**分支**: devops-2.0\n\n**Commit**: {{.app.status.sync.revision}}\n\n**状态**: Synced & Healthy",
+              "btnOrientation": "0",
+              "btns": [
+                {
+                  "title": "🔍 查看 ArgoCD 拓扑",
+                  "actionURL": "http://192.168.1.58:30180/applications/{{.app.metadata.name}}"
+                },
+                {
+                  "title": "📊 查看 Grafana 大屏",
+                  "actionURL": "http://192.168.1.58:30030/d/devops-2.0-fullstack"
+                }
+              ]
+            }
+          }
+
+  # ── 触发器绑定 ─────────────────────────────────────────────
+  trigger.on-sync-failed: |
+    - when: app.status.operationState.phase in ['Error', 'Failed']
+      send: [app-sync-failed]
+
+  trigger.on-health-degraded: |
+    - when: app.status.health.status == 'Degraded'
+      send: [app-health-degraded]
+
+  trigger.on-sync-succeeded: |
+    - when: app.status.operationState.phase in ['Succeeded']
+      send: [app-sync-succeeded]
+
+  defaultTriggers: |
+    - on-sync-failed
+    - on-health-degraded

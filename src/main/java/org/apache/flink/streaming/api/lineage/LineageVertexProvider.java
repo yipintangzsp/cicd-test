@@ -1,0 +1,9 @@
+package org.apache.flink.streaming.api.lineage;
+
+/**
+ * Minimal compatibility type required by flink-connector-kafka 4.0.1-2.0 when the runtime Flink
+ * cluster is still on 1.18.x.
+ */
+public interface LineageVertexProvider {
+    LineageVertex getLineageVertex();
+}

@@ -1,0 +1,62 @@
+# ============================================================
+#  ArgoCD Application — hello-app GitOps 自动同步配置
+#
+#  部署方式：
+#    kubectl apply -f argocd/application.yaml
+#
+#  前置条件：
+#    1. ArgoCD 已安装在 argocd 命名空间
+#    2. GitLab 仓库已通过 argocd repo add 或 UI 添加凭证
+#
+#  核实 GitLab 地址：
+#    kubectl exec -n gitlab ... -- gitlab-rails runner "puts Gitlab.config.gitlab.host"
+#    或在 GitLab UI > Project > Clone > Copy HTTP URL
+# ============================================================
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: hello-app
+  namespace: argocd
+  labels:
+    app: hello-app
+    managed-by: argocd
+  # 级联删除：删除此 Application 时同步删除 K8s 资源
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  # ── 源仓库配置 ───────────────────────────────────────────
+  source:
+    # 请核实：GitLab 项目 HTTP clone 地址
+    repoURL: http://192.168.1.58:30080/root/hello-app.git
+    targetRevision: main      # 监听的分支
+    path: .                   # 仓库根目录（包含 deployment.yaml 等所有清单）
+
+  # ── 目标集群 ─────────────────────────────────────────────
+  destination:
+    server: https://kubernetes.default.svc   # ArgoCD 内部访问集群 API
+    namespace: default
+
+  # ── 同步策略：Automated（代码推送即部署）─────────────────
+  syncPolicy:
+    automated:
+      prune: true       # 删除 Git 中已移除的 K8s 资源
+      selfHeal: true    # 手动修改集群资源后自动恢复为 Git 状态
+    syncOptions:
+      - CreateNamespace=true          # 目标 namespace 不存在时自动创建
+      - PrunePropagationPolicy=foreground
+      - RespectIgnoreDifferences=true  # 忽略 ImageTag 差异（Jenkins 直接更新镜像）
+    retry:
+      limit: 3
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m
+
+  # ── 忽略差异（允许 Jenkins 通过 kubectl set image 更新镜像而不触发 ArgoCD 回滚）
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/template/spec/containers/0/image

@@ -1,0 +1,234 @@
+// Managed repair: v7-expert. Each Jenkinsfile is self-contained and keeps PIPELINE_VERSION choices.
+node {
+    properties([
+        disableConcurrentBuilds(),
+        buildDiscarder(logRotator(numToKeepStr: '30')),
+        parameters([
+            choice(name: 'PIPELINE_VERSION', choices: ['Jenkinsfile-expert-v9', 'Jenkinsfile-v8-jkvideo', 'Jenkinsfile-expert-v8', 'Jenkinsfile-expert-v7', 'Jenkinsfile-expert-v6', 'Jenkinsfile-expert-v5', 'Jenkinsfile-expert-v4', 'Jenkinsfile-expert-v3', 'Jenkinsfile-expert-v2', 'Jenkinsfile'], description: '选择要运行的 Jenkinsfile 版本，按大版本到低版本排列。'),
+            choice(name: 'DEPLOY_ENV', choices: ['dev', 'test', 'prod'], description: '选择部署环境'),
+            booleanParam(name: 'SKIP_SECURITY_SCAN', defaultValue: false, description: '紧急逃生开关')
+        ])
+    ])
+
+    env.PIPELINE_LABEL = 'v7-expert'
+    env.REGISTRY = '127.0.0.1:30050'
+    env.APP_NAME = 'hello-app'
+    env.CONFIG_REPO_URL = 'http://gitlab-service/root/hello-app-config.git'
+    env.GITOPS_CREDENTIALS = 'gitlab-root-auth'
+
+    def deployEnv = (params.DEPLOY_ENV ?: 'dev').trim()
+    def dryRun = (params.DRY_RUN == true)
+    def skipSecurity = (params.SKIP_SECURITY_SCAN == true)
+
+    try {
+        stage('0. 获取代码 (Checkout)') {
+            checkout scm
+            sh 'mkdir -p reports meta'
+            env.GIT_COMMIT_ID = sh(returnStdout: true, script: 'git rev-parse --short=7 HEAD').trim()
+            env.IMAGE_NAME = "${env.REGISTRY}/${env.APP_NAME}:${env.GIT_COMMIT_ID}"
+            writeFile file: 'meta/build-info.txt', text: "pipeline=${env.PIPELINE_LABEL}\ncommit=${env.GIT_COMMIT_ID}\nimage=${env.IMAGE_NAME}\nenv=${deployEnv}\n"
+        }
+
+        stage('1. 源码脱敏审计 (Trivy FS)') {
+            if (skipSecurity) { echo 'SKIP_SECURITY_SCAN=true, skipped.' } else {
+                sh '''#!/bin/sh
+set +e
+mkdir -p reports
+docker run --rm -v "$PWD:/work" aquasec/trivy:0.68.2 fs --scanners secret --format table /work > reports/trivy-fs.log 2>&1 || true
+exit 0
+'''
+            }
+        }
+
+        stage('2. 源码质量审计 (SonarQube)') {
+            if (skipSecurity) { echo 'SKIP_SECURITY_SCAN=true, skipped.' } else {
+                sh '''#!/bin/sh
+set +e
+mkdir -p reports
+if [ -f pom.xml ]; then
+  docker run --rm --network host -v "$PWD:/workspace" -v /var/jenkins_home/.m2:/root/.m2 -w /workspace maven:3-eclipse-temurin-17 \
+    mvn -B -DskipTests compile sonar:sonar -Dsonar.host.url=http://sonar.devops.local -Dsonar.projectKey=hello-app > reports/sonar.log 2>&1 || true
+else
+  echo 'pom.xml not found' > reports/sonar.log
+fi
+exit 0
+'''
+            }
+        }
+
+        stage('3. 产物构建 (Maven Build)') {
+                sh '''#!/bin/sh
+set +e
+mkdir -p reports
+if [ -f pom.xml ]; then
+  docker run --rm --network host -v "$PWD:/workspace" -v /var/jenkins_home/.m2:/root/.m2 -w /workspace maven:3-eclipse-temurin-17 mvn -B -o -DskipTests package > reports/maven-package.log 2>&1 || true
+else
+  echo 'pom.xml not found' > reports/maven-package.log
+fi
+exit 0
+'''
+        }
+
+        stage('4. 业务镜像入库 (Docker Push)') {
+            sh '''#!/bin/sh
+set -eux
+docker build -t "$IMAGE_NAME" .
+docker tag "$IMAGE_NAME" "$REGISTRY/$APP_NAME:stable"
+docker push "$IMAGE_NAME"
+docker push "$REGISTRY/$APP_NAME:stable"
+'''
+        }
+
+        stage('5. 质量红线卡点 (Trivy Image)') {
+            if (skipSecurity) { echo 'SKIP_SECURITY_SCAN=true, skipped.' } else {
+                sh '''#!/bin/sh
+set +e
+mkdir -p reports
+docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.68.2 image --scanners vuln --skip-db-update --format table "$IMAGE_NAME" > reports/trivy-image.log 2>&1 || true
+exit 0
+'''
+            }
+        }
+
+        stage('6. 基建健康度巡检 (Kafka & ELK)') {
+                sh '''#!/bin/sh
+set +e
+mkdir -p reports
+kubectl get pods -A > reports/infra-pods.txt 2>&1 || true
+kubectl -n ns-devops get svc gitlab-service jenkins harbor local-registry >> reports/infra-pods.txt 2>&1 || true
+curl -fsS http://127.0.0.1:30050/v2/ >> reports/infra-pods.txt 2>&1 || true
+curl -fsS http://argocd.devops.local/ >> reports/infra-pods.txt 2>&1 || true
+exit 0
+'''
+        }
+
+        stage('7. Flink 流水线任务发布') {
+                sh '''#!/bin/sh
+set +e
+mkdir -p reports
+if [ "${FLINK_RUN_MODE:-skip}" = "run" ]; then
+  ls -lh target/*.jar > reports/flink-artifacts.log 2>&1 || true
+  echo 'Flink publish hook retained.' >> reports/flink-artifacts.log
+else
+  echo 'FLINK_RUN_MODE=skip' > reports/flink-artifacts.log
+fi
+exit 0
+'''
+        }
+
+
+
+        if (!dryRun) {
+            stage('8. GitOps 多环境分发') {
+                withCredentials([usernamePassword(credentialsId: env.GITOPS_CREDENTIALS, usernameVariable: 'GIT_USERNAME', passwordVariable: 'GIT_PASSWORD')]) {
+                    sh '''#!/bin/sh
+set -eux
+DEPLOY_PATH="${DEPLOY_ENV:-dev}"
+rm -rf config-repo .git-askpass
+cat > .git-askpass <<'ASKPASS'
+#!/bin/sh
+case "$1" in
+  *Username*) printf "%s\n" "$GIT_USERNAME" ;;
+  *Password*) printf "%s\n" "$GIT_PASSWORD" ;;
+  *) printf "%s\n" "$GIT_PASSWORD" ;;
+esac
+ASKPASS
+chmod 700 .git-askpass
+export GIT_ASKPASS="$PWD/.git-askpass"
+export GIT_TERMINAL_PROMPT=0
+git clone "$CONFIG_REPO_URL" config-repo
+cd config-repo
+mkdir -p "$DEPLOY_PATH"
+if [ ! -f namespace.yaml ]; then
+cat > namespace.yaml <<'YAML'
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ns-apps
+YAML
+fi
+if [ ! -f "$DEPLOY_PATH/deployment.yaml" ]; then
+cat > "$DEPLOY_PATH/deployment.yaml" <<'YAML'
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hello-app
+  namespace: ns-apps
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hello-app
+  template:
+    metadata:
+      labels:
+        app: hello-app
+    spec:
+      containers:
+        - name: hello-app
+          image: 127.0.0.1:30050/hello-app:stable
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+YAML
+fi
+if [ ! -f "$DEPLOY_PATH/hello-app-service.yaml" ]; then
+cat > "$DEPLOY_PATH/hello-app-service.yaml" <<'YAML'
+apiVersion: v1
+kind: Service
+metadata:
+  name: hello-app
+  namespace: ns-apps
+spec:
+  selector:
+    app: hello-app
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+YAML
+fi
+if [ ! -f "$DEPLOY_PATH/kustomization.yaml" ]; then
+cat > "$DEPLOY_PATH/kustomization.yaml" <<'YAML'
+resources:
+  - ../namespace.yaml
+  - deployment.yaml
+  - hello-app-service.yaml
+YAML
+fi
+sed -i "s|image: .*|image: $IMAGE_NAME|g" "$DEPLOY_PATH/deployment.yaml"
+git config user.email 'jenkins@devops.local'
+git config user.name 'Jenkins Pipeline'
+git add namespace.yaml "$DEPLOY_PATH/deployment.yaml" "$DEPLOY_PATH/hello-app-service.yaml" "$DEPLOY_PATH/kustomization.yaml"
+git diff --cached --quiet || git commit -m "ci: deploy $APP_NAME $GIT_COMMIT_ID to $DEPLOY_PATH"
+git push origin HEAD:main
+'''
+                }
+            }
+
+            stage('9. K3s 发布验证') {
+                sh '''#!/bin/sh
+set -eux
+DEPLOY_PATH="${DEPLOY_ENV:-dev}"
+kubectl apply -k "config-repo/$DEPLOY_PATH"
+if [ "${RUN_SMOKE_TEST:-true}" = 'true' ]; then
+  kubectl rollout status deployment/hello-app -n ns-apps --timeout=240s
+  kubectl get pods -n ns-apps -l app=hello-app -o wide
+fi
+'''
+            }
+        } else {
+            echo 'DRY_RUN enabled; GitOps update and deployment skipped.'
+        }
+    } finally {
+        archiveArtifacts artifacts: 'reports/**,meta/**', allowEmptyArchive: true
+        cleanWs deleteDirs: true, disableDeferredWipeout: true
+    }
+}

@@ -1,0 +1,59 @@
+# ============================================================
+#  ArgoCD Application — hello-app-v2
+#
+#  监控：devops-2.0 分支 /k8s 目录
+#  自动同步：prune + selfHeal
+#
+#  部署方式：
+#    kubectl apply -f argocd/application-v2.yaml
+#
+#  前置：将 GitLab 仓库注册到 ArgoCD
+#    argocd repo add http://192.168.1.58:30080/root/hello-app.git \
+#      --username root --password <PASSWORD>
+# ============================================================
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: hello-app-v2
+  namespace: argocd
+  labels:
+    app: hello-app
+    version: "2.0"
+  annotations:
+    # ArgoCD Notifications：同步失败时推送钉钉
+    notifications.argoproj.io/subscribe.on-sync-failed.dingtalk: ""
+    notifications.argoproj.io/subscribe.on-health-degraded.dingtalk: ""
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    repoURL:        http://192.168.1.58:30080/root/hello-app.git
+    targetRevision: devops-2.0   # ← 仅监听 2.0 分支
+    path:           k8s/         # ← 仅监听 /k8s 目录下的 Manifests
+
+  destination:
+    server:    https://kubernetes.default.svc
+    namespace: default
+
+  syncPolicy:
+    automated:
+      prune:     true   # 删除 Git 中已移除的资源
+      selfHeal:  true   # 手动改动集群后自动恢复为 Git 状态
+    syncOptions:
+      - CreateNamespace=true
+      - PrunePropagationPolicy=foreground
+    retry:
+      limit: 3
+      backoff:
+        duration:    10s
+        factor:      2
+        maxDuration: 3m
+
+  # Jenkins 通过 git push 更新 image tag，ArgoCD 无需关心镜像差异
+  ignoreDifferences:
+    - group: apps
+      kind:  Deployment
+      jsonPointers:
+        - /spec/template/spec/containers/0/image

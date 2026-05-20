@@ -1,0 +1,153 @@
+# ============================================================
+#  hello-app v2.0 — K8s 灰度发布清单
+#
+#  流量分配策略（副本权重法）:
+#    Stable  Deployment: 4 副本  → 80% 流量
+#    Canary  Deployment: 1 副本  → 20% 流量
+#    共享同一个 Service，由 K8s 默认轮询（RoundRobin）实现
+#
+#  全量发布时：kubectl set image deployment/hello-app-stable ...
+#             kubectl delete deployment hello-app-canary
+# ============================================================
+
+# ── 1. Stable Deployment (生产稳定版) ────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hello-app-stable
+  namespace: default
+  labels:
+    app: hello-app
+    track: stable
+spec:
+  replicas: 4    # 80% 流量
+  selector:
+    matchLabels:
+      app: hello-app
+      track: stable
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app: hello-app
+        track: stable
+        version: stable
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "80"
+        prometheus.io/path: "/"
+    spec:
+      # RC-3 Fix: 优雅退出 60s，防止 Stable 回滚期间出现流量真空
+      terminationGracePeriodSeconds: 60
+      containers:
+      - name: hello-app
+        image: 192.168.1.58:8081/devops/hello-app:stable  # Jenkins kubectl set image 更新此值
+        ports:
+        - containerPort: 80
+        resources:
+          limits:
+            cpu: "200m"
+            memory: "256Mi"
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+        # RC-3 Fix: 存活探针调宽，防止慢启动被误杀
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          failureThreshold: 3
+        # RC-3 Fix: failureThreshold 2→6，容忍窗口 10s→60s
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          failureThreshold: 6
+          successThreshold: 1
+
+---
+# ── 2. Canary Deployment (灰度新版本) ────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hello-app-canary
+  namespace: default
+  labels:
+    app: hello-app
+    track: canary
+spec:
+  replicas: 1    # 20% 流量（1/(4+1)=20%）
+  selector:
+    matchLabels:
+      app: hello-app
+      track: canary
+  template:
+    metadata:
+      labels:
+        app: hello-app
+        track: canary
+        version: canary
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "80"
+        prometheus.io/path: "/"
+    spec:
+      # RC-3 Fix: 优雅退出 60s，回滚删除 Canary 时保障 in-flight 请求完成
+      terminationGracePeriodSeconds: 60
+      containers:
+      - name: hello-app
+        # RC-2 Fix: canary fallback 防占位符, Jenkins 动态替换为新镜像
+        image: 192.168.1.58:8081/devops/hello-app:canary-pending  # Jenkins 动态替换为新镜像
+        ports:
+        - containerPort: 80
+        resources:
+          limits:
+            cpu: "200m"
+            memory: "256Mi"
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+        # RC-3 Fix: 存活探针调宽
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          failureThreshold: 3
+        # RC-3 Fix: failureThreshold 2→6，Canary 容忍窗口 60s
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          failureThreshold: 6
+          successThreshold: 1
+
+---
+# ── 3. 共享 Service（stable + canary 共用，由 app=hello-app 选中）──
+apiVersion: v1
+kind: Service
+metadata:
+  name: hello-app-svc
+  namespace: default
+spec:
+  type: NodePort
+  # 注意: selector 只匹配 app=hello-app，不区分 track
+  # 因此 stable(4) 和 canary(1) 共 5 个 Pod 都在 Endpoints 中
+  selector:
+    app: hello-app
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+      nodePort: 30088

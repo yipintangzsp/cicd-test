@@ -1,0 +1,167 @@
+# ============================================================
+#  AlertManager 配置 — Telegram Bot 告警通知
+#
+#  功能：
+#    - Pod CrashLooping 时通过 @Goodmonring_bot 推送 Telegram 告警
+#    - Deployment 副本数不足时推送告警
+#
+#  部署方式：
+#    kubectl apply -f monitoring/telegram-alertmanager.yaml
+#    # 然后重启 AlertManager 使其加载新 ConfigMap：
+#    kubectl rollout restart deployment/alertmanager -n monitoring
+#
+#  前置条件：
+#    - Prometheus + AlertManager 已部署在 monitoring 命名空间
+#    - 替换 <YOUR_BOT_TOKEN> 和 <YOUR_CHAT_ID>
+#
+#  获取 Chat ID 方法：
+#    1. 将 Bot 拉入群组或直接私聊
+#    2. 访问：https://api.telegram.org/bot<TOKEN>/getUpdates
+#    3. 在返回 JSON 中找 "chat":{"id": 数值}
+# ============================================================
+
+---
+# ── 1. AlertManager 配置（支持 Telegram）────────────────────
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alertmanager-config
+  namespace: monitoring
+data:
+  alertmanager.yml: |
+    global:
+      resolve_timeout: 5m
+
+    route:
+      group_by: ['alertname', 'namespace']
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 12h
+      receiver: 'telegram-devops'
+      routes:
+        - match:
+            severity: critical
+          receiver: 'telegram-devops'
+          continue: true
+        - match:
+            severity: warning
+          receiver: 'telegram-devops'
+
+    receivers:
+      - name: 'telegram-devops'
+        webhook_configs:
+          # 使用 telegram-bot-api 中间件转发（推荐，支持富文本）
+          # 如未部署中间件，可使用下方 shell_command 方式
+          - url: 'http://telegram-bot-api:8080/alert'
+            send_resolved: true
+
+    # 告警抑制（避免重复告警刷屏）
+    inhibit_rules:
+      - source_match:
+          severity: 'critical'
+        target_match:
+          severity: 'warning'
+        equal: ['alertname', 'namespace']
+
+---
+# ── 2. PrometheusRule — 触发 Telegram 告警的规则 ─────────────
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: hello-app-alert-rules
+  namespace: monitoring
+  labels:
+    # 确保 Prometheus Operator 能发现此规则（与 prometheus.yaml 中 ruleSelector 匹配）
+    prometheus: kube-prometheus
+    role: alert-rules
+spec:
+  groups:
+    - name: hello-app.rules
+      interval: 30s
+      rules:
+        # ── Pod CrashLooping 告警 ─────────────────────────────
+        - alert: HelloAppCrashLooping
+          expr: |
+            rate(kube_pod_container_status_restarts_total{
+              namespace="default",
+              pod=~"hello-app.*"
+            }[5m]) * 60 > 0
+          for: 2m
+          labels:
+            severity: critical
+            app: hello-app
+          annotations:
+            summary: "hello-app Pod CrashLooping"
+            description: |
+              Pod {{ $labels.pod }} 在过去 5 分钟内发生重启。
+              重启速率: {{ printf "%.2f" $value }} 次/分钟
+              命名空间: {{ $labels.namespace }}
+              请立即检查: kubectl logs {{ $labels.pod }} -n default --previous
+
+        # ── Deployment 副本不足告警 ───────────────────────────
+        - alert: HelloAppReplicasMismatch
+          expr: |
+            kube_deployment_spec_replicas{
+              namespace="default",
+              deployment=~"hello-app.*"
+            } != kube_deployment_status_available_replicas{
+              namespace="default",
+              deployment=~"hello-app.*"
+            }
+          for: 5m
+          labels:
+            severity: warning
+            app: hello-app
+          annotations:
+            summary: "hello-app 副本数不足"
+            description: |
+              Deployment {{ $labels.deployment }} 期望副本数与实际可用副本数不符。
+              期望: {{ $value }} 个副本，请检查 Pod 状态与资源配额。
+
+        # ── Deployment 完全不可用告警 ────────────────────────
+        - alert: HelloAppDown
+          expr: |
+            kube_deployment_status_available_replicas{
+              namespace="default",
+              deployment=~"hello-app.*"
+            } == 0
+          for: 1m
+          labels:
+            severity: critical
+            app: hello-app
+          annotations:
+            summary: "🚨 hello-app 服务完全宕机！"
+            description: |
+              Deployment {{ $labels.deployment }} 所有副本均不可用！
+              立即执行回滚：kubectl rollout undo deployment/{{ $labels.deployment }}
+
+---
+# ── 3. Telegram 通知中间件 Deployment（可选：无需时删除此段）─
+# 如果您的环境无法直接访问 telegram.org，可部署此中间件
+# 已有网络访问 telegram.org 则删除此段，并修改上方 webhook_configs.url
+#
+# apiVersion: apps/v1
+# kind: Deployment
+# metadata:
+#   name: telegram-bot-api
+#   namespace: monitoring
+# spec:
+#   replicas: 1
+#   selector:
+#     matchLabels:
+#       app: telegram-bot-api
+#   template:
+#     metadata:
+#       labels:
+#         app: telegram-bot-api
+#     spec:
+#       containers:
+#       - name: telegram-bot-api
+#         image: ghcr.io/prometheus-community/alertmanager-telegram-proxy:latest
+#         env:
+#         - name: TELEGRAM_TOKEN
+#           value: "YOUR_BOT_TOKEN"    # ⚠️ 替换为真实 Token
+#         - name: TELEGRAM_CHAT_ID
+#           value: "YOUR_CHAT_ID"      # ⚠️ 替换为真实 Chat ID
+#         ports:
+#         - containerPort: 8080

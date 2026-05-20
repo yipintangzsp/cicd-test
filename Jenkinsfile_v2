@@ -1,0 +1,444 @@
+// ============================================================
+//  v2.0 DevSecOps 进阶流水线 — Jenkinsfile 完整骨架
+//  覆盖：SonarQube代码扫描 + Trivy镜像安全扫描 + 灰度发布
+//       + 自动健康检查 + 智能回滚 + 富文本钉钉推送
+// ============================================================
+pipeline {
+    agent any
+
+    // ── 全局环境变量 ──────────────────────────────────────────
+    environment {
+        // Harbor 镜像仓库
+        HARBOR_URL       = '192.168.1.58:8081'
+        HARBOR_PROJECT   = 'devops'
+        APP_NAME         = 'hello-app'
+        IMAGE_TAG        = "${new Date().format('yyyyMMdd-HHmm')}-b${env.BUILD_NUMBER}"
+        FULL_IMAGE       = "${HARBOR_URL}/${HARBOR_PROJECT}/${APP_NAME}:${IMAGE_TAG}"
+
+        // 观测平台
+        ES_URL           = 'http://192.168.1.58:30092'
+        GRAFANA_URL      = 'http://192.168.1.58:30030'
+        JENKINS_URL_BASE = 'http://192.168.1.58:30008'
+
+        // 通知
+        DINGTALK_TOKEN   = 'a09f532db2a96d203d6d2ed9c5b581211155b6ee84ea8a702bbeb5f69122a413'
+
+        // SonarQube(与 Jenkins 全局工具配置里的 SonarQube Server 名称一致)
+        SONAR_SERVER     = 'SonarQube'
+
+        // 灰度参数
+        CANARY_WEIGHT    = '20'   // 初始灰度流量百分比（副本权重法，stable:4 canary:1）
+        CANARY_REPLICAS  = '1'
+        STABLE_REPLICAS  = '4'
+        HEALTH_CHECK_URL = "http://192.168.1.58:30088/"    // K8s NodePort 健康检查地址
+
+        // 安全门禁阈值
+        TRIVY_CRITICAL_THRESHOLD = '0'   // 允许 CRITICAL 漏洞数，超过则阻断
+        TRIVY_HIGH_THRESHOLD     = '5'   // 允许 HIGH 漏洞数，超过则阻断
+
+        // 扫描结果（在 stage 中赋值，供 post 阶段使用）
+        SONAR_ISSUES     = '0'
+        TRIVY_HIGH       = '0'
+        TRIVY_CRITICAL   = '0'
+    }
+
+    triggers {
+        gitlab(triggerOnPush: true, triggerOnMergeRequest: true, branchFilterType: 'All')
+    }
+
+    stages {
+
+        // ══════════════════════════════════════════════════════
+        // STAGE 1：拉取代码
+        // ══════════════════════════════════════════════════════
+        stage('① 拉取代码') {
+            steps {
+                echo "🚀 拉取代码，分支: ${env.GIT_BRANCH ?: 'main'}"
+                checkout scm
+            }
+        }
+
+        // ══════════════════════════════════════════════════════
+        // STAGE 2：DevSecOps — 代码质量扫描 (SonarQube)
+        // ══════════════════════════════════════════════════════
+        stage('② SonarQube 代码质量扫描') {
+            steps {
+                withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
+                    withSonarQubeEnv("${SONAR_SERVER}") {
+                        sh """
+                            sonar-scanner \
+                              -Dsonar.projectKey=${APP_NAME} \
+                              -Dsonar.projectName=${APP_NAME} \
+                              -Dsonar.sources=. \
+                              -Dsonar.login=${SONAR_TOKEN}
+                        """
+                    }
+                }
+            }
+            post {
+                always {
+                    script {
+                        // 等待 Quality Gate 结果（最多 3 分钟超时）
+                        timeout(time: 3, unit: 'MINUTES') {
+                            def qg = waitForQualityGate()
+                            // 解析 SonarQube API 获取 issue 数量
+                            def sonarApiUrl = "http://192.168.1.58:9000/api/issues/search?projectKeys=${APP_NAME}&types=VULNERABILITY&severities=HIGH,CRITICAL"
+                            def sonarResponse = sh(
+                                script: "curl -s '${sonarApiUrl}'",
+                                returnStdout: true
+                            ).trim()
+                            // 简单 grep 提取 total（生产建议用 readJSON/jq）
+                            def totalMatch = sonarResponse =~ /"total":(\d+)/
+                            env.SONAR_ISSUES = totalMatch ? totalMatch[0][1] : '0'
+                            echo "📊 SonarQube 漏洞 issue 数: ${env.SONAR_ISSUES}"
+
+                            if (qg.status != 'OK') {
+                                // Quality Gate 未通过时发告警但不强制阻断（可按需改为 error()）
+                                echo "⚠️ Quality Gate 状态: ${qg.status}，请尽快修复！"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ══════════════════════════════════════════════════════
+        // STAGE 3：构建镜像 & 推送到 Harbor
+        // ══════════════════════════════════════════════════════
+        stage('③ 构建并推送镜像') {
+            steps {
+                withCredentials([usernamePassword(
+                    credentialsId: 'harbor-creds',
+                    usernameVariable: 'HARBOR_USER',
+                    passwordVariable: 'HARBOR_PWD'
+                )]) {
+                    sh """
+                        docker build -t ${FULL_IMAGE} .
+                        docker login -u ${HARBOR_USER} -p ${HARBOR_PWD} ${HARBOR_URL}
+                        docker push ${FULL_IMAGE}
+                    """
+                }
+            }
+        }
+
+        // ══════════════════════════════════════════════════════
+        // STAGE 4：DevSecOps — 容器镜像安全扫描 (Trivy)
+        // ══════════════════════════════════════════════════════
+        stage('④ Trivy 镜像安全扫描') {
+            steps {
+                script {
+                    // 以 JSON 格式输出扫描结果
+                    sh """
+                        trivy image \
+                          --exit-code 0 \
+                          --no-progress \
+                          --format json \
+                          --output trivy-result.json \
+                          ${FULL_IMAGE} || true
+                    """
+
+                    // 解析 HIGH 和 CRITICAL 漏洞数量
+                    def trivyJson = readFile('trivy-result.json')
+                    def highCount     = sh(script: "cat trivy-result.json | grep -o '\"Severity\":\"HIGH\"'     | wc -l | tr -d ' '", returnStdout: true).trim()
+                    def criticalCount = sh(script: "cat trivy-result.json | grep -o '\"Severity\":\"CRITICAL\"' | wc -l | tr -d ' '", returnStdout: true).trim()
+
+                    env.TRIVY_HIGH     = highCount     ?: '0'
+                    env.TRIVY_CRITICAL = criticalCount ?: '0'
+
+                    echo "🔍 Trivy 扫描结果 → HIGH: ${env.TRIVY_HIGH}, CRITICAL: ${env.TRIVY_CRITICAL}"
+
+                    // ── 安全门禁：超过阈值则中断构建 ──────────
+                    if (env.TRIVY_CRITICAL.toInteger() > TRIVY_CRITICAL_THRESHOLD.toInteger()) {
+                        error "🚨 安全门禁触发！发现 CRITICAL 漏洞 ${env.TRIVY_CRITICAL} 个，超过阈值 ${TRIVY_CRITICAL_THRESHOLD}，构建中断！"
+                    }
+                    if (env.TRIVY_HIGH.toInteger() > TRIVY_HIGH_THRESHOLD.toInteger()) {
+                        error "🚨 安全门禁触发！发现 HIGH 漏洞 ${env.TRIVY_HIGH} 个，超过阈值 ${TRIVY_HIGH_THRESHOLD}，构建中断！"
+                    }
+                }
+            }
+            post {
+                always {
+                    // 归档扫描报告
+                    archiveArtifacts artifacts: 'trivy-result.json', allowEmptyArchive: true
+                }
+            }
+        }
+
+        // ══════════════════════════════════════════════════════
+        // STAGE 5：灰度发布 — 部署 Canary (20% 流量)
+        // ══════════════════════════════════════════════════════
+        stage('⑤ 灰度发布 20% (Canary)') {
+            steps {
+                script {
+                    echo "🐦 开始灰度发布，目标镜像: ${FULL_IMAGE}"
+
+                    withCredentials([file(credentialsId: 'k8s-kube-config', variable: 'KUBECONFIG')]) {
+                        // 从模板生成 canary deployment
+                        sh """
+                            sed 's|IMAGE_PLACEHOLDER|${FULL_IMAGE}|g' k8s/canary-deployment.yaml \
+                              | kubectl --kubeconfig=${KUBECONFIG} apply -f -
+                        """
+                        // 等待 Canary Pod 就绪（最多 2 分钟）
+                        sh """
+                            kubectl --kubeconfig=${KUBECONFIG} \
+                              rollout status deployment/${APP_NAME}-canary \
+                              --timeout=120s
+                        """
+                    }
+
+                    echo "⏳ Canary 已启动，等待 60 秒观察窗口..."
+                    sleep(time: 60, unit: 'SECONDS')
+                }
+            }
+        }
+
+        // ══════════════════════════════════════════════════════
+        // STAGE 6：自动健康检查 & 智能回滚 (Self-Healing)
+        // ══════════════════════════════════════════════════════
+        stage('⑥ 健康检查 & 自动回滚决策') {
+            steps {
+                script {
+                    def MAX_RETRIES  = 5
+                    def RETRY_WAIT   = 10    // 秒
+                    def healthOK     = false
+                    def failReason   = ''
+
+                    withCredentials([file(credentialsId: 'k8s-kube-config', variable: 'KUBECONFIG')]) {
+                        for (int i = 1; i <= MAX_RETRIES; i++) {
+                            echo "🩺 健康检查第 ${i}/${MAX_RETRIES} 次..."
+
+                            // ── 检查 1: Pod 是否 CrashLoopBackOff ──────────
+                            def badPods = sh(
+                                script: """
+                                    kubectl --kubeconfig=${KUBECONFIG} get pods \
+                                      -l app=${APP_NAME},track=canary \
+                                      -o jsonpath='{.items[*].status.containerStatuses[*].state.waiting.reason}' 2>/dev/null || true
+                                """,
+                                returnStdout: true
+                            ).trim()
+
+                            if (badPods.contains('CrashLoopBackOff') || badPods.contains('Error')) {
+                                failReason = "Canary Pod 出现 CrashLoopBackOff/Error: ${badPods}"
+                                break
+                            }
+
+                            // ── 检查 2: HTTP 接口是否返回 500 ──────────────
+                            def httpCode = sh(
+                                script: "curl -s -o /dev/null -w '%{http_code}' --max-time 5 ${HEALTH_CHECK_URL} || echo '000'",
+                                returnStdout: true
+                            ).trim()
+
+                            echo "   HTTP 状态码: ${httpCode}"
+
+                            if (httpCode.startsWith('5')) {
+                                failReason = "HTTP 健康检查返回 ${httpCode}，服务异常"
+                                break
+                            } else if (httpCode == '200' || httpCode == '201' || httpCode == '204') {
+                                healthOK = true
+                                echo "   ✅ 第 ${i} 次检查通过"
+                                break
+                            }
+
+                            sleep(time: RETRY_WAIT, unit: 'SECONDS')
+                        }
+
+                        // ── 决策：回滚 or 全量 ─────────────────────────────
+                        if (!healthOK) {
+                            echo "❌ 健康检查失败: ${failReason}"
+                            echo "🔄 触发自动回滚，删除 Canary Deployment..."
+
+                            sh """
+                                kubectl --kubeconfig=${KUBECONFIG} \
+                                  delete deployment/${APP_NAME}-canary --ignore-not-found=true
+                            """
+
+                            // Fix-4: 等待 Stable 就绪后再报失败，消除回滚期间的流量真空
+                            echo "⏳ [Fix-4] 等待 Stable 接管流量（最多 90 秒）..."
+                            sh """
+                                for i in \
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18; do
+                                    READY=\ 
+                                    echo "   [回滚等待 \${i}/18] Stable Ready 副本: \${READY:-0}"
+                                    if [ "\${READY:-0}" -ge 2 ]; then
+                                        echo "✅ Stable 已有 \${READY} 个就绪副本，流量已接管"
+                                        break
+                                    fi
+                                    sleep 5
+                                done
+                            """
+
+                            // 设置一个环境变量供 post 阶段使用
+                            env.DEPLOY_RESULT  = 'ROLLED_BACK'
+                            env.FAIL_REASON    = failReason
+                            env.CANARY_WEIGHT  = '0'
+
+                            // 触发构建失败（此时 Stable 已接管流量，对用户无感知）
+                            error("自动回滚已执行，Stable 已安全接管流量。原因: ${failReason}")
+                        } else {
+                            echo "✅ 健康检查全部通过，准备全量发布！"
+                            env.DEPLOY_RESULT = 'CANARY_PASS'
+                        }
+                    }
+                }
+            }
+        }
+
+        // ══════════════════════════════════════════════════════
+        // STAGE 7：全量发布 — 更新 Stable Deployment
+        // ══════════════════════════════════════════════════════
+        stage('⑦ 全量发布 (Stable)') {
+            steps {
+                script {
+                    withCredentials([file(credentialsId: 'k8s-kube-config', variable: 'KUBECONFIG')]) {
+                        echo "🚀 开始全量发布，扩展 Stable Deployment..."
+
+                        // 更新 stable deployment 的镜像
+                        sh """
+                            kubectl --kubeconfig=${KUBECONFIG} set image \
+                              deployment/${APP_NAME}-stable \
+                              ${APP_NAME}=${FULL_IMAGE}
+
+                            kubectl --kubeconfig=${KUBECONFIG} \
+                              rollout status deployment/${APP_NAME}-stable \
+                              --timeout=180s
+                        """
+
+                        // 全量完成后下线 Canary
+                        echo "🗑️ 全量发布完成，清理 Canary Deployment..."
+                        sh """
+                            kubectl --kubeconfig=${KUBECONFIG} \
+                              delete deployment/${APP_NAME}-canary --ignore-not-found=true
+                        """
+                    }
+
+                    env.DEPLOY_RESULT = 'FULL_RELEASE'
+                    env.CANARY_WEIGHT = '100'
+                }
+            }
+        }
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // POST ACTIONS — ELK + Grafana + 钉钉富文本通知
+    // ══════════════════════════════════════════════════════════
+    post {
+        always {
+            script {
+                def buildResult   = currentBuild.currentResult ?: 'UNKNOWN'
+                def deployResult  = env.DEPLOY_RESULT ?: 'NOT_DEPLOYED'
+                def sonarIssues   = env.SONAR_ISSUES   ?: '0'
+                def trivyHigh     = env.TRIVY_HIGH      ?: '0'
+                def trivyCritical = env.TRIVY_CRITICAL  ?: '0'
+                def canaryWeight  = env.CANARY_WEIGHT   ?: CANARY_WEIGHT
+
+                // ── ELK 增强埋点（含安全数据）────────────────────
+                echo "📊 [ELK] 写入增强埋点数据..."
+                sh """
+                    curl -s -X POST "${ES_URL}/jenkins-builds-v2/_doc/" \
+                      -H "Content-Type: application/json" \
+                      -d '{
+                        "project_name":    "${APP_NAME}",
+                        "build_number":    ${BUILD_NUMBER},
+                        "image_tag":       "${IMAGE_TAG}",
+                        "build_status":    "${buildResult}",
+                        "deploy_result":   "${deployResult}",
+                        "sonar_issues":    ${sonarIssues},
+                        "trivy_high":      ${trivyHigh},
+                        "trivy_critical":  ${trivyCritical},
+                        "canary_weight":   "${canaryWeight}%",
+                        "build_url":       "${JENKINS_URL_BASE}/job/${JOB_NAME}/${BUILD_NUMBER}/",
+                        "timestamp":       "\$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+                      }' || echo 'ELK 记录跳过'
+                """
+
+                // ── Grafana 标注（含灰度比例）────────────────────
+                echo "📈 [Grafana] 发送含灰度信息的发布标注..."
+                sh """
+                    curl -s -X POST "${GRAFANA_URL}/api/annotations" \
+                      -H "Content-Type: application/json" \
+                      -d '{
+                        "text":  "🚀 ${deployResult}: ${APP_NAME} ${IMAGE_TAG} | Canary=${canaryWeight}% | HIGH=${trivyHigh} CRITICAL=${trivyCritical}",
+                        "tags":  ["deployment","${APP_NAME}","${deployResult}"]
+                      }' || echo 'Grafana 标记跳过'
+                """
+            }
+        }
+
+        success {
+            script {
+                def sonarIssues   = env.SONAR_ISSUES   ?: '0'
+                def trivyHigh     = env.TRIVY_HIGH      ?: '0'
+                def trivyCritical = env.TRIVY_CRITICAL  ?: '0'
+                def canaryWeight  = env.CANARY_WEIGHT   ?: CANARY_WEIGHT
+
+                // ── 钉钉富文本卡片（成功）────────────────────────
+                def dingMsg = """
+{
+  "msgtype": "markdown",
+  "markdown": {
+    "title": "✅ 发布成功 | ${APP_NAME}",
+    "text": "## ✅ v2.0 流水线发布成功\\n\\n**项目**: ${APP_NAME}\\n**版本**: \`${IMAGE_TAG}\`\\n**流水线**: [#${BUILD_NUMBER}](${JENKINS_URL_BASE}/job/${JOB_NAME}/${BUILD_NUMBER}/)\\n\\n---\\n\\n### 🔐 安全 & 质量数据\\n| 指标 | 数值 |\\n|---|---|\\n| SonarQube 代码漏洞 | ${sonarIssues} 个 |\\n| Trivy HIGH 漏洞 | ${trivyHigh} 个 |\\n| Trivy CRITICAL 漏洞 | ${trivyCritical} 个 |\\n\\n### 🐦 灰度发布数据\\n| 指标 | 数值 |\\n|---|---|\\n| 最终流量比例 | 全量 100% |\\n| 灰度验证 | ✅ 通过 |\\n| 回滚 | 未触发 |\\n\\n### 🔗 快捷链接\\n- [📊 Grafana 发布水位线](${GRAFANA_URL}/d/devops-dashboard)\\n- [🔍 Kibana 日志](http://192.168.1.58:30601)"
+  }
+}
+"""
+                sh """
+                    curl -s -H 'Content-Type: application/json' \\
+                      -X POST \\
+                      -d '${dingMsg}' \\
+                      "https://oapi.dingtalk.com/robot/send?access_token=${DINGTALK_TOKEN}" || echo '钉钉通知跳过'
+                """
+            }
+        }
+
+        failure {
+            script {
+                def sonarIssues   = env.SONAR_ISSUES   ?: '0'
+                def trivyHigh     = env.TRIVY_HIGH      ?: '0'
+                def trivyCritical = env.TRIVY_CRITICAL  ?: '0'
+                def failReason    = env.FAIL_REASON     ?: '请查看 Jenkins 日志'
+                def deployResult  = env.DEPLOY_RESULT  ?: 'FAILED'
+
+                def rollbackStatus = (deployResult == 'ROLLED_BACK') ? '✅ 已自动回滚' : '❌ 未部署'
+
+                // ── 钉钉富文本卡片（失败/回滚）──────────────────
+                def dingMsg = """
+{
+  "msgtype": "markdown",
+  "markdown": {
+    "title": "❌ 发布失败 | ${APP_NAME}",
+    "text": "## ❌ v2.0 流水线发布失败\\n\\n**项目**: ${APP_NAME}\\n**版本**: \`${IMAGE_TAG}\`\\n**流水线**: [#${BUILD_NUMBER}](${JENKINS_URL_BASE}/job/${JOB_NAME}/${BUILD_NUMBER}/)\\n\\n---\\n\\n### 🔐 安全 & 质量数据\\n| 指标 | 数值 |\\n|---|---|\\n| SonarQube 代码漏洞 | ${sonarIssues} 个 |\\n| Trivy HIGH 漏洞 | ${trivyHigh} 个 |\\n| Trivy CRITICAL 漏洞 | ${trivyCritical} 个 |\\n\\n### 🚨 故障信息\\n| 指标 | 值 |\\n|---|---|\\n| 失败原因 | ${failReason} |\\n| 回滚状态 | ${rollbackStatus} |\\n| 灰度流量 | 0% (已撤销) |\\n\\n> **请立即前往 Jenkins 查看日志并处理！**"
+  }
+}
+"""
+                sh """
+                    curl -s -H 'Content-Type: application/json' \\
+                      -X POST \\
+                      -d '${dingMsg}' \\
+                      "https://oapi.dingtalk.com/robot/send?access_token=${DINGTALK_TOKEN}" || echo '钉钉告警跳过'
+                """
+            }
+        }
+
+        cleanup {
+            // 清理本地 Docker 镜像，释放空间
+            sh "docker rmi ${FULL_IMAGE} || true"
+            sh "rm -f trivy-result.json || true"
+        }
+    }
+}

@@ -16,7 +16,7 @@ public class LogAnalyzerJob {
 
         // 配置 Kafka 数据源
         KafkaSource<String> source = KafkaSource.<String>builder()
-                .setBootstrapServers("kafka-0.kafka-headless.ns-bigdata.svc.cluster.local:9092")
+                .setBootstrapServers("kafka.ns-bigdata.svc.cluster.local:9092")
                 .setTopics("system-logs") 
                 .setGroupId("flink-devops-group")
                 .setStartingOffsets(OffsetsInitializer.latest()) 

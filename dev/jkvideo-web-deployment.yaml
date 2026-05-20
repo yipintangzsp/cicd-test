@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
       - name: jkvideo-web
-        image: 127.0.0.1:30050/jkvideo-web:github
+        image: 127.0.0.1:30050/jkvideo-web:e026c0c
         ports:
         - containerPort: 80
         readinessProbe:
@@ -42,7 +42,6 @@ spec:
   selector:
     app: jkvideo-web
   ports:
-  - name: http
-    port: 80
+  - port: 80
     targetPort: 80
     nodePort: 30088

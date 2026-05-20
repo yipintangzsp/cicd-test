@@ -1,0 +1,77 @@
+# ============================================================
+#  hello-app v2.0 Deployment
+#  ArgoCD 监控此文件 (devops-2.0 分支 /k8s 目录)
+#  Jenkins 在每次构建后通过 sed 更新 image 并 push 回 Git
+# ============================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hello-app-v2
+  namespace: default
+  labels:
+    app: hello-app
+    version: "2.0"
+    managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: hello-app
+      version: "2.0"
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app: hello-app
+        version: "2.0"
+      annotations:
+        # Prometheus 自动抓取（ServiceMonitor 也会处理，双保险）
+        prometheus.io/scrape: "true"
+        prometheus.io/port:   "80"
+        prometheus.io/path:   "/metrics"
+    spec:
+      # 给 in-flight 请求足够的优雅退出时间，防止回滚期间出现 no available server
+      terminationGracePeriodSeconds: 60
+      containers:
+      - name: hello-app
+        # Jenkins 在 CI 阶段通过 sed 替换为 Harbor 确切镜像路径
+        # 格式：192.168.1.58:8081/devops/hello-app:<tag>
+        # Jenkins CI 通过 sed 替换为实际镜像; fallback 防止 ArgoCD 同步占位符
+        image: 192.168.1.58:8081/devops/hello-app:stable
+        ports:
+        - name: http
+          containerPort: 80
+          protocol: TCP
+        resources:
+          limits:
+            cpu:    "200m"
+            memory: "256Mi"
+          requests:
+            cpu:    "100m"
+            memory: "128Mi"
+        # ── 存活探针：防止 CrashLoop 无休重启 ──────────────────
+        # RC-3 Fix: initialDelay 延长至 30s，防止慢启动应用被误杀
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          failureThreshold: 3
+        # ── 就绪探针：Pod 真正可用才接流量 ─────────────────────
+        # RC-3 Fix: failureThreshold 从 2→6，容忍窗口从 10s 扩至 60s
+        # 防止滚动更新期间 Endpoints 被瞬间全部摘除
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          failureThreshold: 6
+          successThreshold: 1

@@ -1,0 +1,181 @@
+# ============================================================
+#  Grafana/Prometheus 告警规则 — 资源异常告警（钉钉收口）
+#
+#  触发条件：
+#    1. CPU 使用率持续 5 分钟 > 80%
+#    2. 内存使用率持续 5 分钟 > 80%
+#    3. Pod 重启次数 2 分钟内 > 3
+#    4. Pod 完全不可用 1 分钟
+#
+#  部署：
+#    kubectl apply -f monitoring/grafana-alert-rules.yaml
+# ============================================================
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: hello-app-v2-resource-alerts
+  namespace: monitoring
+  labels:
+    prometheus: kube-prometheus
+    role: alert-rules
+    app: hello-app
+    version: "2.0"
+spec:
+  groups:
+    - name: hello-app-v2.resource.rules
+      interval: 30s
+      rules:
+
+        # ── 1. CPU 使用率过高 ──────────────────────────────────
+        - alert: HelloAppV2HighCPU
+          expr: |
+            (
+              sum(rate(container_cpu_usage_seconds_total{
+                namespace="default",
+                pod=~"hello-app-v2.*",
+                container!=""
+              }[5m])) by (pod)
+              /
+              sum(kube_pod_container_resource_limits{
+                namespace="default",
+                pod=~"hello-app-v2.*",
+                resource="cpu"
+              }) by (pod)
+            ) * 100 > 80
+          for: 5m
+          labels:
+            severity: warning
+            app: hello-app
+            version: "2.0"
+            alert_channel: dingtalk
+          annotations:
+            summary: "hello-app-v2 CPU 使用率过高"
+            description: "Pod {{ $labels.pod }} CPU 使用率达 {{ printf \"%.1f\" $value }}%，超过 80% 阈值，持续 5 分钟。"
+
+        # ── 2. 内存使用率过高 ──────────────────────────────────
+        - alert: HelloAppV2HighMemory
+          expr: |
+            (
+              sum(container_memory_working_set_bytes{
+                namespace="default",
+                pod=~"hello-app-v2.*",
+                container!=""
+              }) by (pod)
+              /
+              sum(kube_pod_container_resource_limits{
+                namespace="default",
+                pod=~"hello-app-v2.*",
+                resource="memory"
+              }) by (pod)
+            ) * 100 > 80
+          for: 5m
+          labels:
+            severity: warning
+            app: hello-app
+            version: "2.0"
+            alert_channel: dingtalk
+          annotations:
+            summary: "hello-app-v2 内存使用率过高"
+            description: "Pod {{ $labels.pod }} 内存使用率达 {{ printf \"%.1f\" $value }}%，超过 80% 阈值。"
+
+        # ── 3. Pod 频繁重启（CrashLoop 预警）─────────────────
+        - alert: HelloAppV2FrequentRestart
+          expr: |
+            increase(kube_pod_container_status_restarts_total{
+              namespace="default",
+              pod=~"hello-app-v2.*"
+            }[2m]) > 3
+          for: 0m
+          labels:
+            severity: critical
+            app: hello-app
+            version: "2.0"
+            alert_channel: dingtalk
+          annotations:
+            summary: "🚨 hello-app-v2 Pod 频繁重启"
+            description: "Pod {{ $labels.pod }} 在过去 2 分钟内重启 {{ $value }} 次，请立即排查！"
+
+        # ── 4. 所有副本不可用（服务宕机）─────────────────────
+        - alert: HelloAppV2Down
+          expr: |
+            kube_deployment_status_available_replicas{
+              namespace="default",
+              deployment="hello-app-v2"
+            } == 0
+          for: 1m
+          labels:
+            severity: critical
+            app: hello-app
+            version: "2.0"
+            alert_channel: dingtalk
+          annotations:
+            summary: "🆘 hello-app-v2 服务完全宕机！"
+            description: "Deployment hello-app-v2 所有副本均不可用，请立即执行：kubectl rollout undo deployment/hello-app-v2"
+
+        # ── 5. Endpoints 为空告警（Fix-5 核心，10秒极速感知）───────
+        # 直接感知"no available server"的本质：Service 后端为空
+        - alert: HelloAppEndpointsEmpty
+          expr: |
+            kube_endpoint_address_available{
+              namespace="default",
+              endpoint=~"hello-app-svc|hello-app-service"
+            } == 0
+          for: 10s
+          labels:
+            severity: critical
+            app: hello-app
+            alert_channel: dingtalk
+          annotations:
+            summary: "🚨 hello-app Endpoints 全部为空(no available server 正在发生)"
+            description: |
+              Service {{ $labels.endpoint }} 可用 Endpoints 数为 0，所有上游实例均不可达。
+              立即排查: kubectl get pods -l app=hello-app -n default
+
+        # ── 6. Endpoints 不足预警（Fix-5 预警层）───────────────────
+        - alert: HelloAppEndpointsLow
+          expr: |
+            kube_endpoint_address_available{
+              namespace="default",
+              endpoint=~"hello-app-svc|hello-app-service"
+            } < 2
+          for: 30s
+          labels:
+            severity: warning
+            app: hello-app
+            alert_channel: dingtalk
+          annotations:
+            summary: "⚠️ hello-app 可用实例不足 2 个（风险预警）"
+            description: "Service {{ $labels.endpoint }} 当前只有 {{ $value }} 个可用实例，低于安全阈值 2。"
+
+        # ── 7. Stable Deployment 宕机（Fix-5 覆盖 stable track）────
+        - alert: HelloAppStableDown
+          expr: |
+            kube_deployment_status_available_replicas{
+              namespace="default",
+              deployment="hello-app-stable"
+            } == 0
+          for: 30s
+          labels:
+            severity: critical
+            app: hello-app
+            alert_channel: dingtalk
+          annotations:
+            summary: "🆘 hello-app-stable 全部实例宕机！"
+            description: "Deployment hello-app-stable 所有副本均不可用，立即执行: kubectl rollout undo deployment/hello-app-stable"
+
+        # ── 8. 镜像拉取失败告警（Fix-5 覆盖 RC-2 场景）─────────────
+        - alert: HelloAppErrImagePull
+          expr: |
+            kube_pod_container_status_waiting_reason{
+              namespace="default",
+              pod=~"hello-app.*",
+              reason=~"ErrImagePull|ImagePullBackOff"
+            } > 0
+          for: 1m
+          labels:
+            severity: warning
+            app: hello-app
+            alert_channel: dingtalk
+          annotations:
+            summary: "⚠️ hello-app 存在镜像拉取失败的 Pod"
+            description: "Pod {{ $labels.pod }} 镜像拉取失败({{ $labels.reason }})，可能是 IMAGE_PLACEHOLDER 未替换或 Harbor 不可达。"
