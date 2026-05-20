@@ -88,7 +88,6 @@ node {
         } else {
             sh '''
                 set -eux
-                rm -rf .git
                 git clone /var/jenkins_home/github-cache/cicd-test.git .
                 git checkout -f main
                 git remote set-url origin https://github.com/yipintangzsp/cicd-test.git
