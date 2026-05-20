@@ -22,7 +22,7 @@ node {
 
     try {
         stage('0. 获取代码 (Checkout)') {
-            checkout scm
+            checkout([$class: 'GitSCM', branches: [[name: '*/main']], userRemoteConfigs: [[url: '/var/jenkins_home/github-cache/cicd-test.git']]])
             sh 'mkdir -p reports meta'
             env.GIT_COMMIT_ID = sh(returnStdout: true, script: 'git rev-parse --short=7 HEAD').trim()
             env.IMAGE_NAME = "${env.REGISTRY}/${env.APP_NAME}:${env.GIT_COMMIT_ID}"

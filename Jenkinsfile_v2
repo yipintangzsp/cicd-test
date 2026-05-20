@@ -54,7 +54,7 @@ pipeline {
         stage('① 拉取代码') {
             steps {
                 echo "🚀 拉取代码，分支: ${env.GIT_BRANCH ?: 'main'}"
-                checkout scm
+                checkout([$class: 'GitSCM', branches: [[name: '*/main']], userRemoteConfigs: [[url: '/var/jenkins_home/github-cache/cicd-test.git']]])
             }
         }
 
@@ -255,25 +255,8 @@ pipeline {
                             // Fix-4: 等待 Stable 就绪后再报失败，消除回滚期间的流量真空
                             echo "⏳ [Fix-4] 等待 Stable 接管流量（最多 90 秒）..."
                             sh """
-                                for i in \
-2
-3
-4
-5
-6
-7
-8
-9
-10
-11
-12
-13
-14
-15
-16
-17
-18; do
-                                    READY=\ 
+                                for i in \$(seq 1 18); do
+                                    READY=\$(kubectl --kubeconfig=${KUBECONFIG} get deployment/${APP_NAME}-stable -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo 0)
                                     echo "   [回滚等待 \${i}/18] Stable Ready 副本: \${READY:-0}"
                                     if [ "\${READY:-0}" -ge 2 ]; then
                                         echo "✅ Stable 已有 \${READY} 个就绪副本，流量已接管"

@@ -115,7 +115,7 @@ pipeline {
 
         stage('0. 初始化上下文') {
             steps {
-                checkout scm
+                checkout([$class: 'GitSCM', branches: [[name: '*/main']], userRemoteConfigs: [[url: '/var/jenkins_home/github-cache/cicd-test.git']]])
                 script {
                     env.GIT_COMMIT_ID   = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
                     env.GIT_BRANCH_NAME = sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim()
