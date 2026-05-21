@@ -22,7 +22,7 @@ properties([
     disableConcurrentBuilds(),
     buildDiscarder(logRotator(numToKeepStr: '30', artifactNumToKeepStr: '20')),
     pipelineTriggers([
-        pollSCM('* * * * *')
+        githubPush()
     ]),
     parameters([
         choice(name: 'PIPELINE_VERSION', choices: pipelineVersions, description: 'Select Jenkinsfile version, newest first.'),
