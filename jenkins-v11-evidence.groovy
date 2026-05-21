@@ -83,6 +83,7 @@ def probeV11ServiceGroup(String groupName, Object enabled, Object strictReady, S
             strictReady,
             timeoutSeconds
         )
+        sh "sleep 1"
     }
 }
 
@@ -109,7 +110,13 @@ def probeV11SingleService(String groupName, String namespace, String kind, Strin
           STATUS="missing_k8s_object"
         fi
         if [ -n "${url}" ]; then
-          HTTP_STATUS="\$(curl -k -sS -o /tmp/v11-probe-body.txt -w '%{http_code}' --max-time ${timeoutSeconds} "${url}" || true)"
+          HTTP_STATUS="000"
+          for attempt in 1 2 3; do
+            HTTP_STATUS="\$(curl -k -sS -o /tmp/v11-probe-body.txt -w '%{http_code}' --max-time ${timeoutSeconds} "${url}" || true)"
+            [ "\$HTTP_STATUS" != "000" ] && [ -n "\$HTTP_STATUS" ] && break
+            echo "http_probe_retry=\$attempt url=${url} status=\$HTTP_STATUS" | tee -a "\$OUT"
+            sleep 2
+          done
           echo "http_url=${url} http_status=\$HTTP_STATUS" | tee -a "\$OUT"
           if [ "\$HTTP_STATUS" = "000" ] || [ -z "\$HTTP_STATUS" ]; then
             STATUS="http_unreachable"
@@ -743,10 +750,21 @@ JSON
   }
 }
 EOF2
-        curl -fsS -X PUT "\${ES_URL}/\${RUN_INDEX}/_doc/\${JOB_NAME:-hello-app}-${env.BUILD_NUMBER ?: '0'}?refresh=true" \
-          -H 'Content-Type: application/json' \
-          --data-binary @reports/v11-final-observability/pipeline-run.json \
-          -o reports/v11-final-observability/pipeline-run-result.json
+        PUBLISH_OK=false
+        for attempt in 1 2 3; do
+          if curl -fsS -X PUT "\${ES_URL}/\${RUN_INDEX}/_doc/\${JOB_NAME:-hello-app}-${env.BUILD_NUMBER ?: '0'}?refresh=true" \
+            -H 'Content-Type: application/json' \
+            --data-binary @reports/v11-final-observability/pipeline-run.json \
+            -o reports/v11-final-observability/pipeline-run-result.json; then
+            PUBLISH_OK=true
+            break
+          fi
+          echo "pipeline-run publish retry \${attempt}" | tee -a reports/v11-final-observability/publish-warnings.log
+          sleep 5
+        done
+        if [ "\${PUBLISH_OK}" != "true" ]; then
+          echo "pipeline-run publish failed after retries; keeping build result and archived JSON evidence." | tee -a reports/v11-final-observability/publish-warnings.log
+        fi
 
         if [ -s reports/v11-platform-services.json ]; then
           node - <<'NODE'
@@ -767,7 +785,7 @@ NODE
             -o reports/v11-final-observability/platform-summary-result.json || true
         fi
 
-        curl -fsS "\${ES_URL}/\${RUN_INDEX}/_count" -o reports/v11-final-observability/pipeline-run-count.json
+        curl -fsS "\${ES_URL}/\${RUN_INDEX}/_count" -o reports/v11-final-observability/pipeline-run-count.json || true
         echo "Published final v11 build record to \${RUN_INDEX} and platform summary to \${PLATFORM_INDEX}."
     """
 }
