@@ -21,6 +21,9 @@ def pipelineVersions = [
 properties([
     disableConcurrentBuilds(),
     buildDiscarder(logRotator(numToKeepStr: '30', artifactNumToKeepStr: '20')),
+    pipelineTriggers([
+        pollSCM('* * * * *')
+    ]),
     parameters([
         choice(name: 'PIPELINE_VERSION', choices: pipelineVersions, description: 'Select Jenkinsfile version, newest first.'),
         choice(name: 'DEPLOY_ENV', choices: ['dev', 'test', 'prod'], description: 'Target deployment environment.'),

@@ -92,42 +92,22 @@ def probeV11SingleService(String groupName, String namespace, String kind, Strin
     sh """
         set -eu
         mkdir -p reports/v11-checks
+        SPEC="reports/v11-checks/${safeName}.spec.json"
         OUT="reports/v11-checks/${safeName}.log"
-        STATUS="ok"
-        HTTP_STATUS="not_checked"
-        READY_REPLICAS="unknown"
-        DESIRED_REPLICAS="unknown"
-        echo "group=${groupName} namespace=${namespace} kind=${kind} name=${name}" | tee "\$OUT"
-        if kubectl -n ${namespace} get ${kind} ${name} -o wide >> "\$OUT" 2>&1; then
-          if [ "${kind}" = "deploy" ] || [ "${kind}" = "deployment" ]; then
-            READY_REPLICAS="\$(kubectl -n ${namespace} get deploy ${name} -o jsonpath='{.status.readyReplicas}' 2>/dev/null || true)"
-            DESIRED_REPLICAS="\$(kubectl -n ${namespace} get deploy ${name} -o jsonpath='{.spec.replicas}' 2>/dev/null || true)"
-          elif [ "${kind}" = "statefulset" ] || [ "${kind}" = "sts" ]; then
-            READY_REPLICAS="\$(kubectl -n ${namespace} get statefulset ${name} -o jsonpath='{.status.readyReplicas}' 2>/dev/null || true)"
-            DESIRED_REPLICAS="\$(kubectl -n ${namespace} get statefulset ${name} -o jsonpath='{.spec.replicas}' 2>/dev/null || true)"
-          fi
-        else
-          STATUS="missing_k8s_object"
-        fi
-        if [ -n "${url}" ]; then
-          HTTP_STATUS="000"
-          for attempt in 1 2 3; do
-            HTTP_STATUS="\$(curl -k -sS -o /tmp/v11-probe-body.txt -w '%{http_code}' --max-time ${timeoutSeconds} "${url}" || true)"
-            [ "\$HTTP_STATUS" != "000" ] && [ -n "\$HTTP_STATUS" ] && break
-            echo "http_probe_retry=\$attempt url=${url} status=\$HTTP_STATUS" | tee -a "\$OUT"
-            sleep 2
-          done
-          echo "http_url=${url} http_status=\$HTTP_STATUS" | tee -a "\$OUT"
-          if [ "\$HTTP_STATUS" = "000" ] || [ -z "\$HTTP_STATUS" ]; then
-            STATUS="http_unreachable"
-          fi
-        fi
-        printf '{"pipeline_version":"v11","build":"%s","group":"%s","namespace":"%s","kind":"%s","name":"%s","status":"%s","http_status":"%s","ready_replicas":"%s","desired_replicas":"%s","url":"%s"}\\n' \\
-          "${env.BUILD_NUMBER}" "${groupName}" "${namespace}" "${kind}" "${name}" "\$STATUS" "\$HTTP_STATUS" "\$READY_REPLICAS" "\$DESIRED_REPLICAS" "${url}" >> reports/v11-service-probes.ndjson
-        if [ "${strictReady}" = "true" ] && [ "\$STATUS" != "ok" ]; then
-          echo "STRICT_SERVICE_READY=true and probe failed for ${namespace}/${kind}/${name}: \$STATUS"
-          exit 1
-        fi
+        cat > "\$SPEC" <<'JSON'
+{
+  "build": "${env.BUILD_NUMBER}",
+  "group": "${groupName}",
+  "namespace": "${namespace}",
+  "kind": "${kind}",
+  "name": "${name}",
+  "url": "${url}",
+  "strictReady": "${strictReady}",
+  "timeoutSeconds": "${timeoutSeconds}",
+  "outPath": "reports/v11-checks/${safeName}.log"
+}
+JSON
+        node ci/v11_probe_service.mjs "\$SPEC"
     """
 }
 
