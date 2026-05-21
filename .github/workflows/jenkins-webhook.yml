@@ -1,0 +1,28 @@
+name: Trigger Jenkins GitHub CICD
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  notify-jenkins:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - name: Send push event to Jenkins relay
+        env:
+          GITHUB_EVENT_PAYLOAD: ${{ toJson(github.event) }}
+          DELIVERY_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$GITHUB_EVENT_PAYLOAD" > payload.json
+          curl -fsS --retry 3 --retry-delay 5 --max-time 30 \
+            -X POST 'https://platform.heil.ccwu.cc/github-webhook/' \
+            -H 'Content-Type: application/json' \
+            -H 'X-GitHub-Event: push' \
+            -H "X-GitHub-Delivery: ${DELIVERY_ID}" \
+            --data-binary @payload.json
