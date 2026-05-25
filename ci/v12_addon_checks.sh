@@ -8,6 +8,19 @@ mkdir -p reports/v12-market-fit reports/v12-triggering reports/v12-iac reports/v
   reports/v12-data-lineage reports/v12-observability-deep reports/v12-cluster-resilience \
   reports/v12-cloudflare-live
 
+retry_cmd() {
+  attempts="${V12_RETRY_ATTEMPTS:-5}"
+  delay="${V12_RETRY_DELAY_SECONDS:-4}"
+  count=1
+  until "$@"; do
+    if [ "$count" -ge "$attempts" ]; then
+      return 1
+    fi
+    count=$((count + 1))
+    sleep "$delay"
+  done
+}
+
 case "$CHECK" in
   market-baseline)
     cat > reports/v12-market-fit/recruitment-baseline.json <<'JSON'
@@ -22,8 +35,8 @@ JSON
     ;;
   triggering-ci)
     grep -n 'gitlab(' Jenkinsfile-router > reports/v12-triggering/gitlab-trigger.txt
-    kubectl -n ns-devops get deploy github-webhook-relay -o wide > reports/v12-triggering/github-relay.txt
-    curl -fsS --max-time 8 http://github-webhook-relay.ns-devops.svc.cluster.local:8080/healthz > reports/v12-triggering/github-relay-health.txt
+    retry_cmd kubectl -n ns-devops get deploy github-webhook-relay -o wide > reports/v12-triggering/github-relay.txt
+    retry_cmd curl -fsS --max-time 8 http://github-webhook-relay.ns-devops.svc.cluster.local:8080/healthz > reports/v12-triggering/github-relay-health.txt
     ;;
   version-contract)
     grep -n "Jenkinsfile-expert-v12" Jenkinsfile-router Jenkinsfile-expert-v12 > reports/v12-triggering/version-choice.txt
@@ -202,7 +215,7 @@ JSON
     if [ "${V12_REQUIRE_NO_IDLE_CORE_SERVICE:-false}" = "true" ] && [ "$(node -e "console.log(JSON.parse(require('fs').readFileSync('reports/v12-cluster-resilience/suspicious-idle-services.json','utf8')).length)")" -gt 0 ]; then exit 1; fi
     ;;
   pod-full-coverage)
-    kubectl get pods -A -o json > reports/v12-cluster-resilience/pods-full.json
+    retry_cmd kubectl get pods -A -o json > reports/v12-cluster-resilience/pods-full.json
     node <<'NODE'
 const fs = require('fs');
 const source = 'reports/v12-cluster-resilience/pods-full.json';
