@@ -90,7 +90,7 @@ def firstHttpUrl(String namespace, String name, Object service) {
     return known["${namespace}/${name}"] ?: ''
 }
 
-node {
+def runV12 = {
     timeout(time: 120, unit: 'MINUTES') {
         timestamps {
             try {
@@ -415,5 +415,13 @@ EOF2
                 cleanWs(deleteDirs: true, disableDeferredWipeout: true, notFailBuild: true)
             }
         }
+    }
+}
+
+if (env.NODE_NAME) {
+    runV12()
+} else {
+    node {
+        runV12()
     }
 }
