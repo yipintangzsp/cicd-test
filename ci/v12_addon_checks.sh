@@ -42,7 +42,11 @@ JSON
     done | tee reports/v12-market-fit/jenkins-tool-gap.txt
     ;;
   triggering-ci)
-    grep -n 'gitlab(' Jenkinsfile-router > reports/v12-triggering/gitlab-trigger.txt
+    {
+      grep -n 'gitlab(' Jenkinsfile-router || true
+      grep -n 'githubPush()' Jenkinsfile-router Jenkinsfile || true
+    } > reports/v12-triggering/ci-trigger.txt
+    test -s reports/v12-triggering/ci-trigger.txt
     retry_cmd kubectl -n ns-devops get deploy github-webhook-relay -o wide > reports/v12-triggering/github-relay.txt
     retry_cmd curl -fsS --max-time 8 http://github-webhook-relay.ns-devops.svc.cluster.local:8080/healthz > reports/v12-triggering/github-relay-health.txt
     ;;
