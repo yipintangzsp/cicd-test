@@ -7,6 +7,7 @@
 - Restored `ns-devops/flaresolverr` from `0` to `1` replica.
 - Restored `harbor/harbor-trivy` from `0` to `1` replica.
 - Stabilized `ns-bigdata/spark-operator-webhook` after repeated health probe timeouts.
+- Recovered k3s after a PLEG/apiserver timeout incident caused by resource pressure.
 
 ## Backup
 
@@ -24,6 +25,12 @@ Additional Spark webhook pre-change backup:
 /home/zhang/platform-backups/pre-change-20260525-105333-spark-webhook-probe
 ```
 
+Additional k3s restart pre-change backup:
+
+```text
+/home/zhang/platform-backups/pre-change-20260525-121501-k3s-restart
+```
+
 ## Runtime Decisions
 
 - Docker Portainer was removed because Kubernetes already runs `ns-devops/portainer`.
@@ -36,6 +43,7 @@ Additional Spark webhook pre-change backup:
 - `flaresolverr` failed on arm64 with Chromium segmentation faults, so it now runs as a stateless workload on an amd64 cloud worker.
 - `harbor-trivy` uses `goharbor/trivy-adapter-photon:v2.14.3`, which is amd64-only in the current environment. Its PVC is bound to `devops`, so `qemu-user-static=1:8.2.2+ds-0ubuntu1.16` and `binfmt-support=2.2.2-7` were installed on `devops` to run it without moving or deleting the PVC.
 - `spark-operator-webhook` was not moved. Its startup probe was added, liveness/readiness timeouts were relaxed, and CPU limit was raised from `200m` to `500m` to avoid false CrashLoopBackOff during leader election on a busy node.
+- The k3s restart did not delete workloads, PVCs, images, backups, or databases. It restored apiserver/containerd health after PLEG stopped reporting for more than six minutes.
 
 ## Image Backup
 

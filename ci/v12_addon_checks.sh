@@ -21,6 +21,14 @@ retry_cmd() {
   done
 }
 
+kubectl() {
+  retry_cmd command kubectl "$@"
+}
+
+curl() {
+  retry_cmd command curl "$@"
+}
+
 case "$CHECK" in
   market-baseline)
     cat > reports/v12-market-fit/recruitment-baseline.json <<'JSON'

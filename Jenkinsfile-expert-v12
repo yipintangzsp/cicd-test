@@ -196,8 +196,21 @@ NODE
                 stage('4. Kubernetes 服务清单生成') {
                     sh '''
                         set -eux
-                        kubectl get svc -A -o json > meta/k8s-services-live.json
-                        kubectl get deploy,statefulset,daemonset -A -o json > meta/k8s-workloads-live.json
+                        retry() {
+                          attempts="${V12_RETRY_ATTEMPTS:-5}"
+                          delay="${V12_RETRY_DELAY_SECONDS:-4}"
+                          count=1
+                          until "$@"; do
+                            if [ "$count" -ge "$attempts" ]; then return 1; fi
+                            count=$((count + 1))
+                            sleep "$delay"
+                          done
+                        }
+                        retry kubectl get svc -A -o json > meta/k8s-services-live.json
+                        retry kubectl get deploy -A -o json > meta/k8s-deployments-live.json
+                        retry kubectl get statefulset -A -o json > meta/k8s-statefulsets-live.json
+                        retry kubectl get daemonset -A -o json > meta/k8s-daemonsets-live.json
+                        node -e "const fs=require('fs'); const files=['meta/k8s-deployments-live.json','meta/k8s-statefulsets-live.json','meta/k8s-daemonsets-live.json']; const items=files.flatMap(f=>JSON.parse(fs.readFileSync(f,'utf8')).items||[]); fs.writeFileSync('meta/k8s-workloads-live.json', JSON.stringify({apiVersion:'v1',items}, null, 2)+'\\n')"
                         node -e "const fs=require('fs'); const items=JSON.parse(fs.readFileSync('meta/k8s-services-live.json','utf8')).items||[]; const rows=items.map(s=>[s.metadata.namespace,s.metadata.name].join('\\t')).sort(); fs.writeFileSync('meta/k8s-services-live.tsv', rows.join('\\n')+'\\n')"
                     '''
                 }
