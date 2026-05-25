@@ -99,7 +99,16 @@ def runV12 = {
                 }
 
                 stage('0. 初始化上下文') {
-                    checkout scm
+                    if (env.JOB_NAME == 'github-cicd-test') {
+                        sh '''
+                            set -eux
+                            git clone /var/jenkins_home/github-cache/cicd-test.git .
+                            git checkout -f main
+                            git remote set-url origin https://github.com/yipintangzsp/cicd-test.git
+                        '''
+                    } else {
+                        checkout scm
+                    }
                     V12 = load('jenkins-v12-evidence.groovy')
                     sh 'mkdir -p meta reports'
                     env.SCRIPT_NAME = 'Jenkinsfile-expert-v12'
