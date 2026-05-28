@@ -1,0 +1,34 @@
+name: v13 Platform Pipeline
+
+on:
+  push:
+    branches: [ "main", "develop" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  pipeline:
+    runs-on: self-hosted # 继承 GitLab 的 shell 运行逻辑，假设使用自托管 Runner
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: SonarQube Scan
+        run: |
+          /opt/sonar-scanner/bin/sonar-scanner           -Dsonar.projectKey=hello-app           -Dsonar.sources=.           -Dsonar.host.url=http://sonar.devops.local           -Dsonar.token=${{ secrets.SONAR_TOKEN }}           -Dsonar.javascript.skip=true
+
+      - name: Docker Build & Import to K3s
+        run: |
+          echo "Building and importing to K3s..."
+          docker build -t hello-app:latest .
+          docker save hello-app:latest -o hello-app.tar
+          sudo k3s ctr images import hello-app.tar
+          rm hello-app.tar
+
+      - name: K8s Deploy
+        run: |
+          echo "Applying latest deployment..."
+          kubectl delete deployment hello-app-deployment || true
+          kubectl apply -f k8s/deployment.yaml
+          kubectl apply -f k8s/service.yaml

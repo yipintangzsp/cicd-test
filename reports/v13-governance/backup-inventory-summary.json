@@ -1,0 +1,6 @@
+{
+  "pvcCount": 0,
+  "pvCount": 0,
+  "redactedSecretInventory": true,
+  "mode": "inventory-only-no-delete-no-copy"
+}

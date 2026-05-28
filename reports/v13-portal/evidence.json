@@ -1,0 +1,467 @@
+{
+  "summary": {
+    "timestamp": "2026-05-26T21:01:17Z",
+    "job": "v13-test",
+    "build": "42",
+    "semver": "0.0.42",
+    "commit": "test123",
+    "pipelineVersion": "v13",
+    "publicUrl": "https://platform.heil.ccwu.cc/",
+    "portalUrl": "http://192.168.1.58:30087/",
+    "podTotal": 2,
+    "podReady": 2,
+    "podAttention": 0,
+    "podCoverageLiveTotal": 2,
+    "podCoverageRecordTotal": 2,
+    "podCoverageReady": 2,
+    "podCoverageNotHealthy": 0,
+    "podCoverageComplete": true,
+    "podCoverageRatio": 100,
+    "restartTotal": 0,
+    "nodeTotal": 0,
+    "nodeReady": 0,
+    "serviceTotal": 2,
+    "serviceEndpointReady": 0,
+    "workloadTotal": 0,
+    "workloadReady": 0,
+    "serviceProbeTotal": 3,
+    "serviceProbeOk": 2,
+    "sparkPods": 0,
+    "sparkPodsReady": 0,
+    "sparkServices": 0,
+    "sparkProbeOk": 0,
+    "sparkProbeTotal": 0,
+    "platformHealthScore": 78,
+    "governanceGate": "PASS",
+    "sloAvailabilityPercent": 90,
+    "layerCount": 6,
+    "riskEventTotal": 3,
+    "criticalRiskEvents": 0
+  },
+  "jobMarketFit": [
+    {
+      "capability": "Kubernetes operations",
+      "demand": "high",
+      "platform": "kube-system, metrics-server, Traefik, multi-node k3s",
+      "coverage": "covered",
+      "score": 100
+    },
+    {
+      "capability": "CI/CD automation",
+      "demand": "high",
+      "platform": "Jenkins, GitLab webhook, GitHub webhook relay",
+      "coverage": "covered",
+      "score": 100
+    },
+    {
+      "capability": "GitOps delivery",
+      "demand": "high",
+      "platform": "ArgoCD applications and manifest dry-run gates",
+      "coverage": "covered",
+      "score": 92
+    },
+    {
+      "capability": "Observability",
+      "demand": "high",
+      "platform": "Prometheus, Grafana, Elasticsearch, Kibana, Loki, Jaeger, Zabbix, OpenTelemetry Collector",
+      "coverage": "covered",
+      "score": 98
+    },
+    {
+      "capability": "DevSecOps",
+      "demand": "high",
+      "platform": "SonarQube, Harbor Trivy service, Trivy CLI, Cosign image signing tool, image policy gates",
+      "coverage": "partial",
+      "score": 86
+    },
+    {
+      "capability": "Streaming data",
+      "demand": "medium-high",
+      "platform": "Kafka, Filebeat Kafka link, Flink",
+      "coverage": "covered",
+      "score": 90
+    },
+    {
+      "capability": "Spark/data platform",
+      "demand": "medium-high",
+      "platform": "Spark operator, Airflow, Trino, Superset, MinIO",
+      "coverage": "covered",
+      "score": 88
+    },
+    {
+      "capability": "Infrastructure as Code",
+      "demand": "high",
+      "platform": "Kubernetes manifests, ArgoCD, Helm, Terraform and Kubeconform in Jenkins tools path; Ansible deferred because Jenkins has no Python runtime",
+      "coverage": "partial",
+      "score": 84
+    }
+  ],
+  "dataLineage": [
+    {
+      "from": "Jenkins",
+      "to": "Filebeat",
+      "purpose": "pipeline console and build evidence collection",
+      "status": "covered"
+    },
+    {
+      "from": "Filebeat",
+      "to": "Kafka",
+      "purpose": "log sharing stream",
+      "status": "covered"
+    },
+    {
+      "from": "Kafka",
+      "to": "Flink",
+      "purpose": "stream processing readiness",
+      "status": "covered"
+    },
+    {
+      "from": "Spark",
+      "to": "MinIO",
+      "purpose": "batch and artifact lake path",
+      "status": "check"
+    },
+    {
+      "from": "Airflow",
+      "to": "Trino",
+      "purpose": "workflow orchestration and SQL query surface",
+      "status": "covered"
+    },
+    {
+      "from": "Trino",
+      "to": "Superset",
+      "purpose": "BI/dashboard consumption",
+      "status": "covered"
+    },
+    {
+      "from": "Jenkins",
+      "to": "Elasticsearch/Kibana",
+      "purpose": "run result and visual evidence",
+      "status": "covered"
+    },
+    {
+      "from": "OpenTelemetry Collector",
+      "to": "Prometheus/Jaeger/Kibana-ready pipelines",
+      "purpose": "unified OTLP entrypoint for future metrics, traces and logs",
+      "status": "covered"
+    },
+    {
+      "from": "Prometheus",
+      "to": "Grafana/Zabbix",
+      "purpose": "metrics and alert display",
+      "status": "covered"
+    }
+  ],
+  "capabilityGaps": [
+    {
+      "name": "helm",
+      "reason": "common in job descriptions and available in Jenkins tools path",
+      "action": "use for chart validation only when a service owns a chart lifecycle"
+    },
+    {
+      "name": "terraform",
+      "reason": "common for cloud infrastructure provisioning and available in Jenkins tools path",
+      "action": "use for plan/validate first; do not apply cloud changes without review"
+    },
+    {
+      "name": "ansible",
+      "reason": "common for host configuration, but current Kubernetes API and GitOps cover runtime changes",
+      "action": "install only for repeatable host bootstrap"
+    },
+    {
+      "name": "trivy-cli",
+      "reason": "available in Jenkins tools path, extracted from the local Harbor Trivy image to avoid slow upstream downloads",
+      "action": "use for filesystem and image scan evidence"
+    },
+    {
+      "name": "cosign",
+      "reason": "available in Jenkins tools path, extracted from a verified v3.0.6 Chainguard image",
+      "action": "use only after signing keys are prepared"
+    },
+    {
+      "name": "kubeconform",
+      "reason": "available in Jenkins tools path for Kubernetes manifest schema validation",
+      "action": "run together with kubectl dry-run before GitOps sync"
+    }
+  ],
+  "layerSummary": [
+    {
+      "layer": "cluster-core",
+      "pods": 0,
+      "readyPods": 0,
+      "services": 0,
+      "readyServices": 0,
+      "probes": 0,
+      "okProbes": 0,
+      "restarts": 0,
+      "healthScore": 100
+    },
+    {
+      "layer": "devops-control",
+      "pods": 1,
+      "readyPods": 1,
+      "services": 0,
+      "readyServices": 0,
+      "probes": 0,
+      "okProbes": 0,
+      "restarts": 0,
+      "healthScore": 100
+    },
+    {
+      "layer": "data-platform",
+      "pods": 0,
+      "readyPods": 0,
+      "services": 0,
+      "readyServices": 0,
+      "probes": 0,
+      "okProbes": 0,
+      "restarts": 0,
+      "healthScore": 100
+    },
+    {
+      "layer": "observability",
+      "pods": 0,
+      "readyPods": 0,
+      "services": 1,
+      "readyServices": 0,
+      "probes": 1,
+      "okProbes": 0,
+      "restarts": 0,
+      "healthScore": 33
+    },
+    {
+      "layer": "application",
+      "pods": 1,
+      "readyPods": 1,
+      "services": 1,
+      "readyServices": 0,
+      "probes": 2,
+      "okProbes": 2,
+      "restarts": 0,
+      "healthScore": 67
+    },
+    {
+      "layer": "platform-support",
+      "pods": 0,
+      "readyPods": 0,
+      "services": 0,
+      "readyServices": 0,
+      "probes": 0,
+      "okProbes": 0,
+      "restarts": 0,
+      "healthScore": 100
+    }
+  ],
+  "riskEvents": [
+    {
+      "severity": 75,
+      "category": "probe-failed",
+      "layer": "observability",
+      "namespace": "default",
+      "name": "elasticsearch",
+      "message": "default/elasticsearch probe status http_unreachable"
+    },
+    {
+      "severity": 70,
+      "category": "service-no-endpoint",
+      "layer": "application",
+      "namespace": "ns-apps",
+      "name": "hello-app",
+      "message": "ns-apps/hello-app has no ready endpoint"
+    },
+    {
+      "severity": 70,
+      "category": "service-no-endpoint",
+      "layer": "observability",
+      "namespace": "default",
+      "name": "elasticsearch",
+      "message": "default/elasticsearch has no ready endpoint"
+    }
+  ],
+  "namespaceSummary": [
+    {
+      "namespace": "ns-apps",
+      "pods": 1,
+      "ready": 1,
+      "restarts": 0
+    },
+    {
+      "namespace": "ns-devops",
+      "pods": 1,
+      "ready": 1,
+      "restarts": 0
+    }
+  ],
+  "probeGroups": [
+    {
+      "group": "all-services",
+      "total": 3,
+      "ok": 2,
+      "failed": 1
+    }
+  ],
+  "nodes": [],
+  "spark": {
+    "pods": [],
+    "services": [],
+    "probes": []
+  },
+  "pods": [
+    {
+      "namespace": "ns-devops",
+      "name": "jenkins",
+      "phase": "Running",
+      "ready": true,
+      "restarts": 0,
+      "podIP": "",
+      "node": "",
+      "containers": [],
+      "images": [],
+      "owner": "",
+      "coverageStatus": "covered"
+    },
+    {
+      "namespace": "ns-apps",
+      "name": "hello-app",
+      "phase": "Running",
+      "ready": true,
+      "restarts": 0,
+      "podIP": "",
+      "node": "",
+      "containers": [],
+      "images": [],
+      "owner": "",
+      "coverageStatus": "covered"
+    }
+  ],
+  "services": [
+    {
+      "namespace": "ns-apps",
+      "name": "hello-app",
+      "type": "ClusterIP",
+      "clusterIP": "10.43.0.2",
+      "ports": "port:80",
+      "endpointTotal": 0,
+      "endpointReady": 0
+    },
+    {
+      "namespace": "default",
+      "name": "elasticsearch",
+      "type": "ClusterIP",
+      "clusterIP": "None",
+      "ports": "",
+      "endpointTotal": 0,
+      "endpointReady": 0
+    }
+  ],
+  "workloads": [],
+  "serviceProbes": [
+    {
+      "pipeline_version": "v13",
+      "build": "42",
+      "group": "all-services",
+      "namespace": "ns-apps",
+      "kind": "service",
+      "name": "hello-app",
+      "status": "ok",
+      "http_status": "200"
+    },
+    {
+      "pipeline_version": "v13",
+      "build": "42",
+      "group": "all-services",
+      "namespace": "default",
+      "kind": "service",
+      "name": "elasticsearch",
+      "status": "http_unreachable",
+      "http_status": "000"
+    },
+    {
+      "pipeline_version": "v13",
+      "build": "42",
+      "group": "all-services",
+      "namespace": "ns-apps",
+      "kind": "deploy",
+      "name": "hello-app",
+      "status": "ok",
+      "http_status": "200"
+    }
+  ],
+  "restartHotspots": [],
+  "serviceEndpointIssues": [
+    {
+      "namespace": "ns-apps",
+      "name": "hello-app",
+      "type": "ClusterIP",
+      "clusterIP": "10.43.0.2",
+      "ports": "port:80",
+      "endpointTotal": 0,
+      "endpointReady": 0
+    },
+    {
+      "namespace": "default",
+      "name": "elasticsearch",
+      "type": "ClusterIP",
+      "clusterIP": "None",
+      "ports": "",
+      "endpointTotal": 0,
+      "endpointReady": 0
+    }
+  ],
+  "failedProbes": [
+    {
+      "pipeline_version": "v13",
+      "build": "42",
+      "group": "all-services",
+      "namespace": "default",
+      "kind": "service",
+      "name": "elasticsearch",
+      "status": "http_unreachable",
+      "http_status": "000"
+    }
+  ],
+  "podCoverage": {},
+  "governance": {
+    "epochCharter": {
+      "version": "v13",
+      "era": "governance"
+    },
+    "backupInventory": {
+      "pvcCount": 5,
+      "pvCount": 3,
+      "redactedSecretInventory": true
+    },
+    "restoreDrill": {
+      "verdict": "dry-run-pass",
+      "mode": "evidence-only"
+    },
+    "sloBudget": {
+      "serviceProbeTotal": 20,
+      "serviceProbeOk": 18,
+      "availabilityPercent": 90
+    },
+    "capacityRunway": {
+      "nodes": [
+        {
+          "name": "worker-1",
+          "cpu": "4",
+          "memory": "8Gi"
+        }
+      ]
+    },
+    "releaseGate": {
+      "pass": true,
+      "checks": {
+        "slo": true,
+        "backupInventory": true,
+        "restoreDryRun": true
+      }
+    },
+    "v14Backlog": {
+      "items": [
+        "feature-a"
+      ],
+      "rule": "keep-small"
+    }
+  }
+}

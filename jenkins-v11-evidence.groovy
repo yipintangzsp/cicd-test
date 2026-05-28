@@ -83,7 +83,6 @@ def probeV11ServiceGroup(String groupName, Object enabled, Object strictReady, S
             strictReady,
             timeoutSeconds
         )
-        sh "sleep 1"
     }
 }
 
@@ -92,22 +91,36 @@ def probeV11SingleService(String groupName, String namespace, String kind, Strin
     sh """
         set -eu
         mkdir -p reports/v11-checks
-        SPEC="reports/v11-checks/${safeName}.spec.json"
         OUT="reports/v11-checks/${safeName}.log"
-        cat > "\$SPEC" <<'JSON'
-{
-  "build": "${env.BUILD_NUMBER}",
-  "group": "${groupName}",
-  "namespace": "${namespace}",
-  "kind": "${kind}",
-  "name": "${name}",
-  "url": "${url}",
-  "strictReady": "${strictReady}",
-  "timeoutSeconds": "${timeoutSeconds}",
-  "outPath": "reports/v11-checks/${safeName}.log"
-}
-JSON
-        node ci/v11_probe_service.mjs "\$SPEC"
+        STATUS="ok"
+        HTTP_STATUS="not_checked"
+        READY_REPLICAS="unknown"
+        DESIRED_REPLICAS="unknown"
+        echo "group=${groupName} namespace=${namespace} kind=${kind} name=${name}" | tee "\$OUT"
+        if kubectl -n ${namespace} get ${kind} ${name} -o wide >> "\$OUT" 2>&1; then
+          if [ "${kind}" = "deploy" ] || [ "${kind}" = "deployment" ]; then
+            READY_REPLICAS="\$(kubectl -n ${namespace} get deploy ${name} -o jsonpath='{.status.readyReplicas}' 2>/dev/null || true)"
+            DESIRED_REPLICAS="\$(kubectl -n ${namespace} get deploy ${name} -o jsonpath='{.spec.replicas}' 2>/dev/null || true)"
+          elif [ "${kind}" = "statefulset" ] || [ "${kind}" = "sts" ]; then
+            READY_REPLICAS="\$(kubectl -n ${namespace} get statefulset ${name} -o jsonpath='{.status.readyReplicas}' 2>/dev/null || true)"
+            DESIRED_REPLICAS="\$(kubectl -n ${namespace} get statefulset ${name} -o jsonpath='{.spec.replicas}' 2>/dev/null || true)"
+          fi
+        else
+          STATUS="missing_k8s_object"
+        fi
+        if [ -n "${url}" ]; then
+          HTTP_STATUS="\$(curl -k -sS -o /tmp/v11-probe-body.txt -w '%{http_code}' --max-time ${timeoutSeconds} "${url}" || true)"
+          echo "http_url=${url} http_status=\$HTTP_STATUS" | tee -a "\$OUT"
+          if [ "\$HTTP_STATUS" = "000" ] || [ -z "\$HTTP_STATUS" ]; then
+            STATUS="http_unreachable"
+          fi
+        fi
+        printf '{"pipeline_version":"v11","build":"%s","group":"%s","namespace":"%s","kind":"%s","name":"%s","status":"%s","http_status":"%s","ready_replicas":"%s","desired_replicas":"%s","url":"%s"}\\n' \\
+          "${env.BUILD_NUMBER}" "${groupName}" "${namespace}" "${kind}" "${name}" "\$STATUS" "\$HTTP_STATUS" "\$READY_REPLICAS" "\$DESIRED_REPLICAS" "${url}" >> reports/v11-service-probes.ndjson
+        if [ "${strictReady}" = "true" ] && [ "\$STATUS" != "ok" ]; then
+          echo "STRICT_SERVICE_READY=true and probe failed for ${namespace}/${kind}/${name}: \$STATUS"
+          exit 1
+        fi
     """
 }
 
@@ -644,10 +657,6 @@ def publishV11FinalBuildRecord(String kibanaIndexPrefix, String buildResult, Obj
       "pipeline_job_key": { "type": "keyword" },
       "pipeline_result_key": { "type": "keyword" },
       "pipeline_build_number": { "type": "long" },
-      "build_number": { "type": "long" },
-      "result": { "type": "keyword" },
-      "status": { "type": "keyword" },
-      "build_status": { "type": "keyword" },
       "pipeline_duration_seconds": { "type": "long" },
       "pipeline_duration_ms": { "type": "long" },
       "pipeline_version_key": { "type": "keyword" },
@@ -684,10 +693,6 @@ JSON
   "pipeline_job_key": "\${JOB_NAME:-hello-app}",
   "pipeline_result_key": "${buildResult}",
   "pipeline_build_number": ${env.BUILD_NUMBER ?: '0'},
-  "build_number": ${env.BUILD_NUMBER ?: '0'},
-  "result": "${buildResult}",
-  "status": "${buildResult}",
-  "build_status": "${buildResult}",
   "pipeline_duration_seconds": \${DURATION_SECONDS},
   "pipeline_duration_ms": \${DURATION_MS},
   "pipeline_version_key": "v11",
@@ -730,21 +735,10 @@ JSON
   }
 }
 EOF2
-        PUBLISH_OK=false
-        for attempt in 1 2 3; do
-          if curl -fsS -X PUT "\${ES_URL}/\${RUN_INDEX}/_doc/\${JOB_NAME:-hello-app}-${env.BUILD_NUMBER ?: '0'}?refresh=true" \
-            -H 'Content-Type: application/json' \
-            --data-binary @reports/v11-final-observability/pipeline-run.json \
-            -o reports/v11-final-observability/pipeline-run-result.json; then
-            PUBLISH_OK=true
-            break
-          fi
-          echo "pipeline-run publish retry \${attempt}" | tee -a reports/v11-final-observability/publish-warnings.log
-          sleep 5
-        done
-        if [ "\${PUBLISH_OK}" != "true" ]; then
-          echo "pipeline-run publish failed after retries; keeping build result and archived JSON evidence." | tee -a reports/v11-final-observability/publish-warnings.log
-        fi
+        curl -fsS -X PUT "\${ES_URL}/\${RUN_INDEX}/_doc/\${JOB_NAME:-hello-app}-${env.BUILD_NUMBER ?: '0'}?refresh=true" \
+          -H 'Content-Type: application/json' \
+          --data-binary @reports/v11-final-observability/pipeline-run.json \
+          -o reports/v11-final-observability/pipeline-run-result.json
 
         if [ -s reports/v11-platform-services.json ]; then
           node - <<'NODE'
@@ -765,7 +759,7 @@ NODE
             -o reports/v11-final-observability/platform-summary-result.json || true
         fi
 
-        curl -fsS "\${ES_URL}/\${RUN_INDEX}/_count" -o reports/v11-final-observability/pipeline-run-count.json || true
+        curl -fsS "\${ES_URL}/\${RUN_INDEX}/_count" -o reports/v11-final-observability/pipeline-run-count.json
         echo "Published final v11 build record to \${RUN_INDEX} and platform summary to \${PLATFORM_INDEX}."
     """
 }

@@ -1,0 +1,12 @@
+argocd/application-v2.yaml
+argocd/application.yaml
+k8s/canary-deployment.yaml
+k8s/canary-service.yaml
+k8s/deployment.yaml
+k8s/service.yaml
+k8s/servicemonitor.yaml
+monitoring/alertmanager-dingtalk.yaml
+monitoring/argocd-notifications-cm.yaml
+monitoring/grafana-alert-rules.yaml
+monitoring/grafana-dashboard.json
+monitoring/telegram-alertmanager.yaml

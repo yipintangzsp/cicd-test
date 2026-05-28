@@ -1,0 +1,492 @@
+// Jenkinsfile-epoch-v13: governance-era platform pipeline.
+// Scripted form avoids Jenkins CPS method-size limits while still creating visible stages.
+
+def V13 = null
+def addonStages = [
+    ['13.1 新纪元章程与继承边界', 'epoch-charter'],
+    ['13.2 非破坏备份资产盘点', 'backup-inventory'],
+    ['13.3 恢复演练 Dry-run 证据', 'restore-drill'],
+    ['13.4 SLO 与错误预算基线', 'slo-budget'],
+    ['13.5 容量水位与扩容窗口', 'capacity-runway'],
+    ['13.6 有状态数据资产登记', 'stateful-registry'],
+    ['13.7 服务归属与责任矩阵', 'ownership-map'],
+    ['13.8 发布安全门禁矩阵', 'release-gate'],
+    ['13.9 运行手册交接证据', 'runbook-handoff'],
+    ['13.10 V14 候选积压池', 'next-epoch-backlog'],
+    ['26.1 招聘高频能力基线', 'market-baseline'],
+    ['26.2 Jenkins 工具差距证据', 'tool-gap'],
+    ['26.3 CI 触发链路证据', 'triggering-ci'],
+    ['26.4 GitLab 版本参数契约', 'version-contract'],
+    ['26.5 GitHub 复用契约证据', 'github-cache'],
+    ['27.1 Helm 能力差距与替代路径', 'helm-gap'],
+    ['27.2 Terraform 能力差距与安装约束', 'terraform-gap'],
+    ['27.3 Ansible 能力差距与安装约束', 'ansible-gap'],
+    ['27.4 IaC 清单可渲染证据', 'iac-render'],
+    ['27.5 ArgoCD 应用健康清单', 'argocd-health'],
+    ['28.1 SonarQube DevSecOps 覆盖', 'sonarqube'],
+    ['28.2 Harbor Trivy 覆盖', 'harbor-trivy'],
+    ['28.3 Trivy CLI 差距与复用策略', 'trivy-gap'],
+    ['28.4 Cosign 签名差距与复用策略', 'cosign-gap'],
+    ['28.5 凭据泄露轻量扫描', 'secret-scan'],
+    ['29.1 Kafka Broker Endpoint 深化', 'kafka-endpoints'],
+    ['29.2 Kafka UI 路由深化', 'kafka-ui'],
+    ['29.3 Jenkins 日志 Kafka 共享链路', 'jenkins-kafka-link'],
+    ['29.4 Spark CRD 明细深化', 'spark-crd'],
+    ['29.5 Spark Controller 日志样本', 'spark-logs'],
+    ['29.6 Spark Webhook TLS 与 Endpoint', 'spark-webhook'],
+    ['29.7 Flink JobManager 作业视图', 'flink-jobs'],
+    ['29.8 Flink TaskManager Slot 证据', 'flink-taskmanagers'],
+    ['29.9 Airflow DAG 能力证据', 'airflow-dags'],
+    ['29.10 Trino Catalog 证据', 'trino-catalog'],
+    ['29.11 Superset BI 证据', 'superset-bi'],
+    ['29.12 MinIO 对象存储证据', 'minio'],
+    ['30.1 Prometheus Targets 证据', 'prometheus-targets'],
+    ['30.2 Grafana 数据源证据', 'grafana-datasources'],
+    ['30.3 Kibana Data View 证据', 'kibana-data-views'],
+    ['30.4 Elasticsearch Index 证据', 'elastic-indices'],
+    ['30.5 Loki Ready 与 Ring 证据', 'loki-ring'],
+    ['30.6 Jaeger Trace UI 证据', 'jaeger'],
+    ['30.7 Zabbix 可展示证据', 'zabbix'],
+    ['30.8 OpenTelemetry Collector 统一遥测入口', 'otel-collector'],
+    ['31.1 Node 生命周期与污点证据', 'nodes'],
+    ['31.2 Worker 调度保护证据', 'worker-scheduling'],
+    ['31.3 Resource Requests 覆盖率', 'resource-requests'],
+    ['31.4 PVC 持久化清单', 'pvc'],
+    ['31.5 最近事件异常证据', 'events'],
+    ['31.6 无 Endpoint 服务识别', 'no-endpoints'],
+    ['31.7 疑似闲置服务识别', 'idle-services'],
+    ['31.8 全 Pod 覆盖契约', 'pod-full-coverage'],
+]
+def postPortalAddonStages = [
+    ['31.9 Cloudflare 公网入口证据', 'cloudflare-public'],
+    ['31.10 Portal Evidence 动态接口', 'portal-evidence'],
+    ['31.11 V13 成熟度评分', 'maturity-score'],
+    ['31.12 V13 计划一致性门禁', 'plan-conformance'],
+]
+
+def p(String name, Object fallbackValue) {
+    return params.containsKey(name) && params[name] != null ? params[name] : fallbackValue
+}
+
+def firstHttpUrl(String namespace, String name, Object service) {
+    def known = [
+        'ns-devops/jenkins': 'http://jenkins.ns-devops.svc.cluster.local:8080/login',
+        'ns-devops/gitlab-service': 'http://gitlab-service.ns-devops.svc.cluster.local/users/sign_in',
+        'ns-devops/local-registry': 'http://local-registry.ns-devops.svc.cluster.local:5000/v2/',
+        'ns-devops/github-webhook-relay': 'http://github-webhook-relay.ns-devops.svc.cluster.local:8080/healthz',
+        'ns-devops/portainer': 'http://portainer.ns-devops.svc.cluster.local:9000/',
+        'argocd/argocd-server': 'http://argocd-server.argocd.svc.cluster.local/',
+        'harbor/harbor-core': 'http://harbor-core.harbor.svc.cluster.local/api/v2.0/health',
+        'harbor/harbor-portal': 'http://harbor-portal.harbor.svc.cluster.local/',
+        'ns-apps/hello-app': 'http://hello-app.ns-apps.svc.cluster.local/',
+        'ns-apps/platform-era-v13-portal': 'http://platform-era-v13-portal.ns-apps.svc.cluster.local/',
+        'ns-apps/hello-app-v10-portal': 'http://hello-app-v10-portal.ns-apps.svc.cluster.local/',
+        'ns-apps/jkvideo-web': 'http://jkvideo-web.ns-apps.svc.cluster.local/',
+        'default/elasticsearch': 'http://elasticsearch.default.svc.cluster.local:9200/',
+        'default/kibana-service': 'http://kibana-service.default.svc.cluster.local:5601/api/status',
+        'monitoring/kube-stack-grafana': 'http://kube-stack-grafana.monitoring.svc.cluster.local/api/health',
+        'monitoring/kube-stack-kube-prometheus-prometheus': 'http://kube-stack-kube-prometheus-prometheus.monitoring.svc.cluster.local:9090/-/ready',
+        'monitoring/loki': 'http://loki.monitoring.svc.cluster.local:3100/ready',
+        'monitoring/jaeger': 'http://jaeger.monitoring.svc.cluster.local:16686/',
+        'monitoring/otel-collector': 'http://otel-collector.monitoring.svc.cluster.local:8888/metrics',
+        'zabbix/zabbix-web': 'http://zabbix-web.zabbix.svc.cluster.local:8080/',
+        'ns-bigdata/kafka-ui': 'http://kafka-ui.ns-bigdata.svc.cluster.local:8080/',
+        'ns-bigdata/flink-jobmanager': 'http://flink-jobmanager.ns-bigdata.svc.cluster.local:8081/overview',
+        'data-infra/airflow-api-server': 'http://airflow-api-server.data-infra.svc.cluster.local:8080/api/v2/monitor/health',
+        'data-infra/minio': 'http://minio.data-infra.svc.cluster.local:9000/minio/health/live',
+        'data-infra/superset': 'http://superset.data-infra.svc.cluster.local:8088/health',
+        'data-infra/trino': 'http://trino.data-infra.svc.cluster.local:8080/v1/info',
+        'sonarqube/sonarqube-sonarqube': 'http://sonarqube-sonarqube.sonarqube.svc.cluster.local:9000/api/system/status',
+        'ns-openclaw/openclaw-controller-svc': 'http://openclaw-controller-svc.ns-openclaw.svc.cluster.local:8080/',
+    ]
+    return known["${namespace}/${name}"] ?: ''
+}
+
+def runV13 = {
+    timeout(time: 120, unit: 'MINUTES') {
+        timestamps {
+            try {
+                stage('清理环境') {
+                    deleteDir()
+                }
+
+                stage('0. 初始化上下文') {
+                    if (env.JOB_NAME == 'github-cicd-test') {
+                        sh '''
+                            set -eux
+                            git clone /var/jenkins_home/github-cache/cicd-test.git .
+                            git checkout -f main
+                            git remote set-url origin https://github.com/yipintangzsp/cicd-test.git
+                        '''
+                    } else {
+                        checkout scm
+                    }
+                    V13 = load('jenkins-v13-governance.groovy')
+                    sh 'mkdir -p meta reports'
+                    env.SCRIPT_NAME = 'Jenkinsfile-epoch-v13'
+                    env.APP_NAME = 'platform-era-v13'
+                    env.REGISTRY = '127.0.0.1:30050'
+                    env.MAVEN_IMAGE = 'maven:3-eclipse-temurin-17'
+                    env.PROMETHEUS_URL = 'http://10.43.111.46:9090'
+                    env.GRAFANA_URL = 'http://192.168.1.58:30084'
+                    env.KIBANA_URL = 'http://192.168.1.58:30061'
+                    env.V13_PORTAL_NODEPORT = "${p('V13_PORTAL_NODEPORT', '30087')}"
+                    env.V13_PORTAL_NAMESPACE = "${p('V13_PORTAL_NAMESPACE', 'ns-apps')}"
+                    env.V13_PORTAL_SERVICE_NAME = "${p('V13_PORTAL_SERVICE_NAME', 'platform-era-v13-portal')}"
+                    env.V13_GRAFANA_DASHBOARD_TITLE = "${p('V13_GRAFANA_DASHBOARD_TITLE', 'ZhangLab V13 Governance Era')}"
+                    env.V13_KIBANA_INDEX_PREFIX = "${p('V13_KIBANA_INDEX_PREFIX', 'jenkins-v13-governance')}"
+                    env.V13_REQUIRE_CLOUDFLARE_PUBLICATION = "${p('V13_REQUIRE_CLOUDFLARE_PUBLICATION', false)}"
+                    env.CLOUDFLARE_PUBLIC_HOSTNAME = "${p('CLOUDFLARE_PUBLIC_HOSTNAME', 'platform.heil.ccwu.cc')}"
+                    env.CLOUDFLARE_TUNNEL_IMAGE = "${p('CLOUDFLARE_TUNNEL_IMAGE', '127.0.0.1:30050/library/cloudflared:2026.5.0')}"
+                    env.GIT_COMMIT_ID = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
+                    env.GIT_BRANCH_NAME = sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim()
+                    env.GIT_AUTHOR = sh(script: 'git log -1 --pretty=%an', returnStdout: true).trim()
+                    env.GIT_COMMIT_MSG = sh(script: 'git log -1 --pretty=%s', returnStdout: true).trim()
+                    env.SEMVER = "0.0.${env.BUILD_NUMBER}"
+                    env.IMAGE_NAME = "${env.REGISTRY}/${env.APP_NAME}:${env.SEMVER}"
+                    sh '''
+node - <<'NODE'
+const fs = require('fs');
+const buildInfo = {
+  script: process.env.SCRIPT_NAME,
+  build: process.env.BUILD_NUMBER,
+  semver: process.env.SEMVER,
+  commit: process.env.GIT_COMMIT_ID,
+  branch: process.env.GIT_BRANCH_NAME,
+  portal_url: `http://192.168.1.58:${process.env.V13_PORTAL_NODEPORT}/`,
+  cloudflare_hostname: process.env.CLOUDFLARE_PUBLIC_HOSTNAME
+};
+fs.writeFileSync('meta/build-info.json', JSON.stringify(buildInfo, null, 2) + '\\n');
+NODE
+                    '''
+                    currentBuild.displayName = "#${env.BUILD_NUMBER} v13 ${env.SEMVER}"
+                    currentBuild.description = "${env.GIT_AUTHOR} | ${env.GIT_COMMIT_MSG.take(60)}"
+                }
+
+                stage('1. 执行前预检') {
+                    sh '''
+                        set -eux
+                        test -f Jenkinsfile-epoch-v13
+                        test -f Jenkinsfile-router
+                        test -f ci/v13_generate_governance.mjs
+                        test -f ci/v13_addon_checks.sh
+                        test -f jenkins-v13-governance.groovy
+                        kubectl version --client
+                        kubectl get nodes -o wide
+                        kubectl get pods -A | tee reports/v13-precheck-pods.txt
+                        git --version
+                        node --version
+                    '''
+                }
+
+                stage('1.1 V13 参数契约与执行画像') {
+                    V13.writeV13ParameterContract(
+                        p('V13_RUN_PLATFORM_PROBES', true),
+                        p('V13_STRICT_SERVICE_READY', false),
+                        p('V13_IMPORT_OBSERVABILITY_ASSETS', true),
+                        p('V13_INCLUDE_RESOURCE_PROFILE', true),
+                        p('V13_INCLUDE_POD_LOG_SAMPLE', true),
+                        p('V13_NOTIFY_DINGTALK', true),
+                        "${p('V13_SERVICE_PROBE_TIMEOUT', '8')}",
+                        env.V13_GRAFANA_DASHBOARD_TITLE,
+                        env.V13_KIBANA_INDEX_PREFIX
+                    )
+                    V13.writeV13CapabilityChecklist()
+                }
+
+                stage('2. 源码结构与构建验证') {
+                    sh '''
+                        set -eux
+                        test -f pom.xml
+                        test -f Dockerfile
+                        find k8s argocd -maxdepth 2 -type f 2>/dev/null | sort > reports/v13-source-layout.txt || true
+                    '''
+                }
+
+                stage('3. 产物构建与镜像演练') {
+                    if (p('DRY_RUN', false)) {
+                        sh "echo 'DRY_RUN=true, business image build skipped. Portal still publishes as v13 evidence.' > reports/v13-dry-run.log"
+                    } else {
+                        sh '''
+                            set -eux
+                            docker build --network none -t ${IMAGE_NAME} .
+                            docker push ${IMAGE_NAME}
+                        '''
+                    }
+                }
+
+                stage('4. Kubernetes 服务清单生成') {
+                    sh '''
+                        set -eux
+                        retry() {
+                          attempts="${V13_RETRY_ATTEMPTS:-5}"
+                          delay="${V13_RETRY_DELAY_SECONDS:-4}"
+                          count=1
+                          until "$@"; do
+                            if [ "$count" -ge "$attempts" ]; then return 1; fi
+                            count=$((count + 1))
+                            sleep "$delay"
+                          done
+                        }
+                        retry kubectl get svc -A -o json > meta/k8s-services-live.json
+                        retry kubectl get deploy -A -o json > meta/k8s-deployments-live.json
+                        retry kubectl get statefulset -A -o json > meta/k8s-statefulsets-live.json
+                        retry kubectl get daemonset -A -o json > meta/k8s-daemonsets-live.json
+                        node -e "const fs=require('fs'); const files=['meta/k8s-deployments-live.json','meta/k8s-statefulsets-live.json','meta/k8s-daemonsets-live.json']; const items=files.flatMap(f=>JSON.parse(fs.readFileSync(f,'utf8')).items||[]); fs.writeFileSync('meta/k8s-workloads-live.json', JSON.stringify({apiVersion:'v1',items}, null, 2)+'\\n')"
+                        node -e "const fs=require('fs'); const items=JSON.parse(fs.readFileSync('meta/k8s-services-live.json','utf8')).items||[]; const rows=items.map(s=>[s.metadata.namespace,s.metadata.name].join('\\t')).sort(); fs.writeFileSync('meta/k8s-services-live.tsv', rows.join('\\n')+'\\n')"
+                    '''
+                }
+
+                def services = []
+                readFile('meta/k8s-services-live.tsv').split('\\n').each { row ->
+                    def parts = row.split('\\t')
+                    if (parts.size() >= 2 && parts[0] && parts[1]) {
+                        services.add(['namespace': parts[0], 'name': parts[1]])
+                    }
+                }
+                writeFile file: 'reports/v13-stage-plan.txt', text: ([
+                    '清理环境',
+                    '0. 初始化上下文',
+                    '1. 执行前预检',
+                    '1.1 V13 参数契约与执行画像',
+                    '2. 源码结构与构建验证',
+                    '3. 产物构建与镜像演练',
+                    '4. Kubernetes 服务清单生成',
+                ] + services.collect { svc -> "4.SVC ${svc['namespace']}/${svc['name']}" } + addonStages.collect { it[0] } + [
+                    '4.99 全服务探针汇总',
+                    '5. 全平台证据矩阵',
+                    '6. 证据汇总与失败门禁',
+                    '7. Grafana/Kibana 图表素材校验',
+                    '8. 观测资产导入演练',
+                    '9. Cloudflare-ready 成果门户',
+                    '10. 成果验证',
+                ] + postPortalAddonStages.collect { it[0] } + [
+                    '11. 复杂度与安全审计',
+                    '12. 真实发布结论与回滚证据包',
+                ]).join('\n') + '\n'
+
+                services.each { svc ->
+                    def ns = svc['namespace']
+                    def name = svc['name']
+                    stage("4.SVC ${ns}/${name}".take(80)) {
+                        V13.probeV13ServiceGroup(
+                            "all-services",
+                            p('V13_RUN_PLATFORM_PROBES', true),
+                            p('V13_STRICT_SERVICE_READY', false),
+                            "${p('V13_SERVICE_PROBE_TIMEOUT', '8')}",
+                            [[
+                                namespace: ns,
+                                kind: 'service',
+                                name: name,
+                                url: firstHttpUrl(ns, name, null)
+                            ]]
+                        )
+                    }
+                }
+
+                addonStages.each { item ->
+                    stage(item[0]) {
+                        sh "bash ci/v13_addon_checks.sh ${item[1]}"
+                    }
+                }
+
+                stage('4.99 全服务探针汇总') {
+                    sh '''
+node - <<'NODE'
+const fs = require('fs');
+const known = {
+  'ns-devops/jenkins': 'http://jenkins.ns-devops.svc.cluster.local:8080/login',
+  'ns-devops/gitlab-service': 'http://gitlab-service.ns-devops.svc.cluster.local/users/sign_in',
+  'ns-devops/local-registry': 'http://local-registry.ns-devops.svc.cluster.local:5000/v2/',
+  'ns-devops/github-webhook-relay': 'http://github-webhook-relay.ns-devops.svc.cluster.local:8080/healthz',
+  'ns-devops/portainer': 'http://portainer.ns-devops.svc.cluster.local:9000/',
+  'argocd/argocd-server': 'http://argocd-server.argocd.svc.cluster.local/',
+  'harbor/harbor-core': 'http://harbor-core.harbor.svc.cluster.local/api/v2.0/health',
+  'harbor/harbor-portal': 'http://harbor-portal.harbor.svc.cluster.local/',
+  'ns-apps/hello-app': 'http://hello-app.ns-apps.svc.cluster.local/',
+  'ns-apps/platform-era-v13-portal': 'http://platform-era-v13-portal.ns-apps.svc.cluster.local/',
+  'ns-apps/hello-app-v10-portal': 'http://hello-app-v10-portal.ns-apps.svc.cluster.local/',
+  'ns-apps/jkvideo-web': 'http://jkvideo-web.ns-apps.svc.cluster.local/',
+  'default/elasticsearch': 'http://elasticsearch.default.svc.cluster.local:9200/',
+  'default/kibana-service': 'http://kibana-service.default.svc.cluster.local:5601/api/status',
+  'monitoring/kube-stack-grafana': 'http://kube-stack-grafana.monitoring.svc.cluster.local/api/health',
+  'monitoring/kube-stack-kube-prometheus-prometheus': 'http://kube-stack-kube-prometheus-prometheus.monitoring.svc.cluster.local:9090/-/ready',
+  'monitoring/loki': 'http://loki.monitoring.svc.cluster.local:3100/ready',
+  'monitoring/jaeger': 'http://jaeger.monitoring.svc.cluster.local:16686/',
+  'monitoring/otel-collector': 'http://otel-collector.monitoring.svc.cluster.local:8888/metrics',
+  'zabbix/zabbix-web': 'http://zabbix-web.zabbix.svc.cluster.local:8080/',
+  'ns-bigdata/kafka-ui': 'http://kafka-ui.ns-bigdata.svc.cluster.local:8080/',
+  'ns-bigdata/flink-jobmanager': 'http://flink-jobmanager.ns-bigdata.svc.cluster.local:8081/overview',
+  'data-infra/airflow-api-server': 'http://airflow-api-server.data-infra.svc.cluster.local:8080/api/v2/monitor/health',
+  'data-infra/minio': 'http://minio.data-infra.svc.cluster.local:9000/minio/health/live',
+  'data-infra/superset': 'http://superset.data-infra.svc.cluster.local:8088/health',
+  'data-infra/trino': 'http://trino.data-infra.svc.cluster.local:8080/v1/info',
+  'sonarqube/sonarqube-sonarqube': 'http://sonarqube-sonarqube.sonarqube.svc.cluster.local:9000/api/system/status',
+  'ns-openclaw/openclaw-controller-svc': 'http://openclaw-controller-svc.ns-openclaw.svc.cluster.local:8080/'
+};
+const rowsText = fs.readFileSync('meta/k8s-services-live.tsv', 'utf8').trim();
+const rows = rowsText ? rowsText.split('\\n').filter(Boolean) : [];
+const targets = rows.map((row) => {
+  const [namespace, name] = row.split('\\t');
+  const key = `${namespace}/${name}`;
+  return {namespace, kind: 'service', name, url: known[key] || ''};
+});
+fs.writeFileSync('reports/v13-service-targets.json', JSON.stringify(targets, null, 2) + '\\n');
+NODE
+                    '''
+                }
+
+                stage('5. 全平台证据矩阵') {
+                    V13.generateV13PlatformEvidence("${p('K8S_NAMESPACE', 'ns-apps')}", env.APP_NAME, env.V13_PORTAL_NODEPORT)
+                }
+
+                stage('6. 证据汇总与失败门禁') {
+                    V13.collectV13RuntimeSamples(p('V13_INCLUDE_RESOURCE_PROFILE', true), p('V13_INCLUDE_POD_LOG_SAMPLE', true))
+                    V13.summarizeV13ServiceProbes(p('V13_STRICT_SERVICE_READY', false))
+                }
+
+                stage('7. Grafana/Kibana 图表素材校验') {
+                    sh '''
+                        set -eux
+                        test -s reports/v13-platform-services.json
+                        test -s reports/v13-observability.ndjson
+                        test -s reports/v13-prometheus-metrics.prom
+                        test -s reports/v13-grafana-dashboard.json
+                        test -s reports/v13-kibana-dashboard.ndjson
+                        node -e "JSON.parse(require('fs').readFileSync('reports/v13-platform-services.json','utf8'))"
+                        node -e "JSON.parse(require('fs').readFileSync('reports/v13-grafana-dashboard.json','utf8'))"
+                    '''
+                    V13.lintV13GrafanaDashboard(env.V13_GRAFANA_DASHBOARD_TITLE)
+                    V13.lintV13KibanaSavedObjects(env.V13_KIBANA_INDEX_PREFIX)
+                    V13.generateV13PrometheusRulePreview(env.V13_KIBANA_INDEX_PREFIX)
+                }
+
+                stage('8. 观测资产导入演练') {
+                    V13.rehearseV13ObservabilityImport(p('V13_IMPORT_OBSERVABILITY_ASSETS', true), env.V13_GRAFANA_DASHBOARD_TITLE, env.V13_KIBANA_INDEX_PREFIX)
+                    V13.rehearseV13DingTalkNotification(p('V13_NOTIFY_DINGTALK', true))
+                    V13.writeV13LogRoutingEvidence()
+                    V13.writeV13ZabbixEvidence()
+                    V13.writeV13CloudflareContract(env.V13_PORTAL_NAMESPACE, env.V13_PORTAL_SERVICE_NAME, env.V13_PORTAL_NODEPORT, env.CLOUDFLARE_PUBLIC_HOSTNAME)
+                }
+
+                stage('9. Cloudflare-ready 成果门户') {
+                    if (p('V13_PUBLISH_PORTAL', true)) {
+                        def portalImage = "127.0.0.1:30050/platform-era-v13-portal:${env.GIT_COMMIT_ID}"
+                        V13.publishV13EvidencePortal(env.V13_PORTAL_NAMESPACE, env.V13_PORTAL_SERVICE_NAME, portalImage, env.V13_PORTAL_NODEPORT, env.CLOUDFLARE_PUBLIC_HOSTNAME)
+                        V13.writeCloudflareTunnelTemplateV13(env.V13_PORTAL_NAMESPACE, env.CLOUDFLARE_PUBLIC_HOSTNAME, "${p('CLOUDFLARE_TUNNEL_SECRET', 'cloudflare-v11-tunnel-token')}", env.CLOUDFLARE_TUNNEL_IMAGE)
+                    } else {
+                        sh "echo 'V13_PUBLISH_PORTAL=false' > reports/v13-portal-publish.log"
+                    }
+                }
+
+                stage('10. 成果验证') {
+                    sh '''
+                        set -eux
+                        cluster_url() {
+                          url="$1"
+                          case "$url" in
+                            http://*.svc.cluster.local*|https://*.svc.cluster.local*) ;;
+                            *) printf '%s' "$url"; return 0 ;;
+                          esac
+                          scheme="${url%%://*}"
+                          rest="${url#*://}"
+                          hostport="${rest%%/*}"
+                          path="${rest#"$hostport"}"
+                          [ "$path" != "$rest" ] || path="/"
+                          host="${hostport%%:*}"
+                          portpart="${hostport#"$host"}"
+                          svc="${host%%.*}"
+                          remainder="${host#*.}"
+                          ns="${remainder%%.*}"
+                          ip="$(command kubectl -n "$ns" get svc "$svc" -o jsonpath='{.spec.clusterIP}' 2>/dev/null || true)"
+                          if [ -n "$ip" ] && [ "$ip" != "None" ]; then
+                            printf '%s://%s%s%s' "$scheme" "$ip" "$portpart" "$path"
+                          else
+                            printf '%s' "$url"
+                          fi
+                        }
+                        PRIMARY_URL="$(cluster_url "http://${V13_PORTAL_SERVICE_NAME}.${V13_PORTAL_NAMESPACE}.svc.cluster.local/")"
+                        COMPAT_URL="$(cluster_url "http://hello-app-v10-portal.${V13_PORTAL_NAMESPACE}.svc.cluster.local/")"
+                        curl -fsS --max-time 10 "$PRIMARY_URL" | grep -q 'ZhangLab DevOps V13 Control Surface'
+                        curl -fsS --max-time 10 "$COMPAT_URL" | grep -q 'ZhangLab DevOps V13 Control Surface'
+                        curl -fsS --max-time 10 "https://${CLOUDFLARE_PUBLIC_HOSTNAME}/" | grep -q 'ZhangLab DevOps V13 Control Surface'
+                        kubectl get deploy,svc -n ${V13_PORTAL_NAMESPACE} -l app.kubernetes.io/name=platform-era-v13-portal -o wide | tee reports/v13-portal-k8s.txt
+                        kubectl get svc -n ${V13_PORTAL_NAMESPACE} hello-app-v10-portal -o wide | tee -a reports/v13-portal-k8s.txt
+                    '''
+                }
+
+                postPortalAddonStages.each { item ->
+                    stage(item[0]) {
+                        sh "bash ci/v13_addon_checks.sh ${item[1]}"
+                    }
+                }
+
+                stage('11. 复杂度与安全审计') {
+                    sh '''
+                        set -eu
+                        mkdir -p reports/v13-complexity
+                        wc -l reports/v13-stage-plan.txt | tee reports/v13-complexity/runtime-stage-count.txt
+                        REQUIRED=$(( (77 * 3 + 1) / 2 ))
+                        ACTUAL=$(wc -l < reports/v13-stage-plan.txt | tr -d ' ')
+                        [ "$ACTUAL" -ge "$REQUIRED" ] || { echo "v13 runtime stage count $ACTUAL is below required $REQUIRED"; exit 1; }
+                        P1='rm -''rf'
+                        P2='kubectl de''lete'
+                        P3='helm un''install'
+                        P4='docker system pr''une'
+                        P5='trun''cate'
+                        P6='mk''fs'
+                        P7='dd i''f='
+                        P8='drop data''base'
+                        grep -RInE "$P1|$P2|$P3|$P4|$P5|$P6|$P7|$P8" Jenkinsfile-epoch-v13 jenkins-v13-governance.groovy ci/v13_generate_governance.mjs ci/v13_addon_checks.sh Jenkinsfile-router > reports/v13-complexity/destructive-scan.txt || true
+                        [ ! -s reports/v13-complexity/destructive-scan.txt ] || { cat reports/v13-complexity/destructive-scan.txt; exit 1; }
+                        FLOATING=':lat''est'
+                        grep -RIn "$FLOATING" Jenkinsfile-epoch-v13 jenkins-v13-governance.groovy ci/v13_generate_governance.mjs ci/v13_addon_checks.sh > reports/v13-complexity/floating-tags.txt || true
+                        [ ! -s reports/v13-complexity/floating-tags.txt ] || { cat reports/v13-complexity/floating-tags.txt; exit 1; }
+                    '''
+                    V13.auditV13DestructiveCommands()
+                    V13.validateV13ArtifactCompleteness()
+                    sh 'mkdir -p reports/v13-stage-manifest && cp reports/v13-stage-plan.txt reports/v13-stage-manifest/stages.txt && nl -ba reports/v13-stage-manifest/stages.txt | tee reports/v13-stage-manifest/stage-count.txt'
+                }
+
+                stage('12. 真实发布结论与回滚证据包') {
+                    sh '''
+                        set -eu
+                        mkdir -p reports/v13-release-verdict
+                        cat > reports/v13-release-verdict/verdict.json <<EOF2
+{
+  "pipeline": "Jenkinsfile-epoch-v13",
+  "build": "${BUILD_NUMBER}",
+  "commit": "${GIT_COMMIT_ID}",
+	  "internal_portal": "http://192.168.1.58:${V13_PORTAL_NODEPORT}/",
+	  "primary_portal_service": "${V13_PORTAL_SERVICE_NAME}.${V13_PORTAL_NAMESPACE}.svc.cluster.local",
+	  "compatibility_nodeport_service": "hello-app-v10-portal.${V13_PORTAL_NAMESPACE}.svc.cluster.local",
+	  "cloudflare_hostname": "${CLOUDFLARE_PUBLIC_HOSTNAME}",
+	  "runtime_stage_plan": "$(wc -l < reports/v13-stage-plan.txt | tr -d ' ')",
+  "rollback_scope": "v13 portal/cloudflared resources only; no PVC or backup deletion"
+}
+EOF2
+                        cat reports/v13-release-verdict/verdict.json
+                    '''
+                }
+            } catch (err) {
+                currentBuild.result = 'FAILURE'
+                throw err
+            } finally {
+                if (V13 != null) {
+                    def finalResult = currentBuild.currentResult ?: (currentBuild.result ?: 'SUCCESS')
+                    V13.publishV13FinalBuildRecord("${p('V13_KIBANA_INDEX_PREFIX', 'jenkins-v13-governance')}", finalResult, currentBuild.duration ?: 0)
+                }
+                archiveArtifacts allowEmptyArchive: true, artifacts: 'meta/**,reports/**', fingerprint: true
+                cleanWs(deleteDirs: true, disableDeferredWipeout: true, notFailBuild: true)
+            }
+        }
+    }
+}
+
+if (env.NODE_NAME) {
+    runV13()
+} else {
+    node {
+        runV13()
+    }
+}

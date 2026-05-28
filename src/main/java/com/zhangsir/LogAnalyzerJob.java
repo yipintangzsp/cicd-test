@@ -13,6 +13,7 @@ public class LogAnalyzerJob {
 
     public static void main(String[] args) throws Exception {
         final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        env.setParallelism(1); // 针对本地开发环境限制并行度，防止资源过载
 
         // 配置 Kafka 数据源
         KafkaSource<String> source = KafkaSource.<String>builder()

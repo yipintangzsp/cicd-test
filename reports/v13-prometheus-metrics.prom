@@ -1,0 +1,54 @@
+# HELP cicd_v13_pod_ready Kubernetes pod readiness captured by Jenkins v13.
+# TYPE cicd_v13_pod_ready gauge
+cicd_v13_pod_ready{namespace="ns-devops",pod="jenkins",build="42"} 1
+cicd_v13_pod_ready{namespace="ns-apps",pod="hello-app",build="42"} 1
+# HELP cicd_v13_pod_coverage Kubernetes pod coverage records captured by Jenkins v13.
+# TYPE cicd_v13_pod_coverage gauge
+cicd_v13_pod_coverage{namespace="ns-devops",pod="jenkins",node="",build="42"} 1
+cicd_v13_pod_coverage{namespace="ns-apps",pod="hello-app",node="",build="42"} 1
+# HELP cicd_v13_pod_coverage_ratio Kubernetes live pod coverage ratio captured by Jenkins v13.
+# TYPE cicd_v13_pod_coverage_ratio gauge
+cicd_v13_pod_coverage_ratio{build="42"} 100
+# HELP cicd_v13_pod_restarts Kubernetes pod restart count captured by Jenkins v13.
+# TYPE cicd_v13_pod_restarts gauge
+cicd_v13_pod_restarts{namespace="ns-devops",pod="jenkins",build="42"} 0
+cicd_v13_pod_restarts{namespace="ns-apps",pod="hello-app",build="42"} 0
+# HELP cicd_v13_service_endpoint_ready Ready endpoints captured by Jenkins v13.
+# TYPE cicd_v13_service_endpoint_ready gauge
+cicd_v13_service_endpoint_ready{namespace="ns-apps",service="hello-app",build="42"} 0
+cicd_v13_service_endpoint_ready{namespace="default",service="elasticsearch",build="42"} 0
+# HELP cicd_v13_service_probe_ok Platform service probe status captured by Jenkins v13.
+# TYPE cicd_v13_service_probe_ok gauge
+cicd_v13_service_probe_ok{group="all-services",namespace="ns-apps",service="hello-app",build="42"} 1
+cicd_v13_service_probe_ok{group="all-services",namespace="default",service="elasticsearch",build="42"} 0
+cicd_v13_service_probe_ok{group="all-services",namespace="ns-apps",service="hello-app",build="42"} 1
+# HELP cicd_v13_spark_component_ready Spark component readiness captured by Jenkins v13.
+# TYPE cicd_v13_spark_component_ready gauge
+# HELP cicd_v13_node_ready Kubernetes node readiness captured by Jenkins v13.
+# TYPE cicd_v13_node_ready gauge
+# HELP cicd_v13_market_capability_score Recruitment capability fit score captured by Jenkins v13.
+# TYPE cicd_v13_market_capability_score gauge
+cicd_v13_market_capability_score{capability="Kubernetes operations",coverage="covered",build="42"} 100
+cicd_v13_market_capability_score{capability="CI/CD automation",coverage="covered",build="42"} 100
+cicd_v13_market_capability_score{capability="GitOps delivery",coverage="covered",build="42"} 92
+cicd_v13_market_capability_score{capability="Observability",coverage="covered",build="42"} 98
+cicd_v13_market_capability_score{capability="DevSecOps",coverage="partial",build="42"} 86
+cicd_v13_market_capability_score{capability="Streaming data",coverage="covered",build="42"} 90
+cicd_v13_market_capability_score{capability="Spark/data platform",coverage="covered",build="42"} 88
+cicd_v13_market_capability_score{capability="Infrastructure as Code",coverage="partial",build="42"} 84
+# HELP cicd_v13_platform_health_score Composite platform health score captured by Jenkins v13.
+# TYPE cicd_v13_platform_health_score gauge
+cicd_v13_platform_health_score{build="42"} 78
+# HELP cicd_v13_layer_health_score Composite layer health score captured by Jenkins v13.
+# TYPE cicd_v13_layer_health_score gauge
+cicd_v13_layer_health_score{layer="cluster-core",build="42"} 100
+cicd_v13_layer_health_score{layer="devops-control",build="42"} 100
+cicd_v13_layer_health_score{layer="data-platform",build="42"} 100
+cicd_v13_layer_health_score{layer="observability",build="42"} 33
+cicd_v13_layer_health_score{layer="application",build="42"} 67
+cicd_v13_layer_health_score{layer="platform-support",build="42"} 100
+# HELP cicd_v13_risk_event_severity Risk event severity captured by Jenkins v13.
+# TYPE cicd_v13_risk_event_severity gauge
+cicd_v13_risk_event_severity{category="probe-failed",layer="observability",namespace="default",name="elasticsearch",build="42"} 75
+cicd_v13_risk_event_severity{category="service-no-endpoint",layer="application",namespace="ns-apps",name="hello-app",build="42"} 70
+cicd_v13_risk_event_severity{category="service-no-endpoint",layer="observability",namespace="default",name="elasticsearch",build="42"} 70
