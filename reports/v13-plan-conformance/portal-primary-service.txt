@@ -1,0 +1,30 @@
+E0527 05:24:45.617973   47670 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://127.0.0.1:26443/api?timeout=32s\": dial tcp 127.0.0.1:26443: connect: connection refused"
+E0527 05:24:45.618243   47670 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://127.0.0.1:26443/api?timeout=32s\": dial tcp 127.0.0.1:26443: connect: connection refused"
+E0527 05:24:45.619476   47670 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://127.0.0.1:26443/api?timeout=32s\": dial tcp 127.0.0.1:26443: connect: connection refused"
+E0527 05:24:45.619617   47670 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://127.0.0.1:26443/api?timeout=32s\": dial tcp 127.0.0.1:26443: connect: connection refused"
+E0527 05:24:45.620843   47670 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://127.0.0.1:26443/api?timeout=32s\": dial tcp 127.0.0.1:26443: connect: connection refused"
+The connection to the server 127.0.0.1:26443 was refused - did you specify the right host or port?
+E0527 05:24:49.667631   47674 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://127.0.0.1:26443/api?timeout=32s\": dial tcp 127.0.0.1:26443: connect: connection refused"
+E0527 05:24:49.667848   47674 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://127.0.0.1:26443/api?timeout=32s\": dial tcp 127.0.0.1:26443: connect: connection refused"
+E0527 05:24:49.669139   47674 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://127.0.0.1:26443/api?timeout=32s\": dial tcp 127.0.0.1:26443: connect: connection refused"
+E0527 05:24:49.669332   47674 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://127.0.0.1:26443/api?timeout=32s\": dial tcp 127.0.0.1:26443: connect: connection refused"
+E0527 05:24:49.670522   47674 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://127.0.0.1:26443/api?timeout=32s\": dial tcp 127.0.0.1:26443: connect: connection refused"
+The connection to the server 127.0.0.1:26443 was refused - did you specify the right host or port?
+E0527 05:24:53.716506   47681 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://127.0.0.1:26443/api?timeout=32s\": dial tcp 127.0.0.1:26443: connect: connection refused"
+E0527 05:24:53.716733   47681 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://127.0.0.1:26443/api?timeout=32s\": dial tcp 127.0.0.1:26443: connect: connection refused"
+E0527 05:24:53.718005   47681 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://127.0.0.1:26443/api?timeout=32s\": dial tcp 127.0.0.1:26443: connect: connection refused"
+E0527 05:24:53.718222   47681 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://127.0.0.1:26443/api?timeout=32s\": dial tcp 127.0.0.1:26443: connect: connection refused"
+E0527 05:24:53.719219   47681 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://127.0.0.1:26443/api?timeout=32s\": dial tcp 127.0.0.1:26443: connect: connection refused"
+The connection to the server 127.0.0.1:26443 was refused - did you specify the right host or port?
+E0527 05:24:57.763956   47684 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://127.0.0.1:26443/api?timeout=32s\": dial tcp 127.0.0.1:26443: connect: connection refused"
+E0527 05:24:57.764289   47684 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://127.0.0.1:26443/api?timeout=32s\": dial tcp 127.0.0.1:26443: connect: connection refused"
+E0527 05:24:57.765419   47684 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://127.0.0.1:26443/api?timeout=32s\": dial tcp 127.0.0.1:26443: connect: connection refused"
+E0527 05:24:57.765608   47684 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://127.0.0.1:26443/api?timeout=32s\": dial tcp 127.0.0.1:26443: connect: connection refused"
+E0527 05:24:57.766861   47684 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://127.0.0.1:26443/api?timeout=32s\": dial tcp 127.0.0.1:26443: connect: connection refused"
+The connection to the server 127.0.0.1:26443 was refused - did you specify the right host or port?
+E0527 05:25:01.815432   47691 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://127.0.0.1:26443/api?timeout=32s\": dial tcp 127.0.0.1:26443: connect: connection refused"
+E0527 05:25:01.815705   47691 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://127.0.0.1:26443/api?timeout=32s\": dial tcp 127.0.0.1:26443: connect: connection refused"
+E0527 05:25:01.816808   47691 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://127.0.0.1:26443/api?timeout=32s\": dial tcp 127.0.0.1:26443: connect: connection refused"
+E0527 05:25:01.816990   47691 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://127.0.0.1:26443/api?timeout=32s\": dial tcp 127.0.0.1:26443: connect: connection refused"
+E0527 05:25:01.818211   47691 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://127.0.0.1:26443/api?timeout=32s\": dial tcp 127.0.0.1:26443: connect: connection refused"
+The connection to the server 127.0.0.1:26443 was refused - did you specify the right host or port?

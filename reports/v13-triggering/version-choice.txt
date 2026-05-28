@@ -1,0 +1,11 @@
+Jenkinsfile-router:4:    'Jenkinsfile-epoch-v13'
+Jenkinsfile-router:62:        def selected = (params.PIPELINE_VERSION ?: 'Jenkinsfile-epoch-v13').trim()
+Jenkinsfile-epoch-v13:1:// Jenkinsfile-epoch-v13: governance-era platform pipeline.
+Jenkinsfile-epoch-v13:126:                    env.SCRIPT_NAME = 'Jenkinsfile-epoch-v13'
+Jenkinsfile-epoch-v13:169:                        test -f Jenkinsfile-epoch-v13
+Jenkinsfile-epoch-v13:440:                        grep -RInE "$P1|$P2|$P3|$P4|$P5|$P6|$P7|$P8" Jenkinsfile-epoch-v13 jenkins-v13-governance.groovy ci/v13_generate_governance.mjs ci/v13_addon_checks.sh Jenkinsfile-router > reports/v13-complexity/destructive-scan.txt || true
+Jenkinsfile-epoch-v13:443:                        grep -RIn "$FLOATING" Jenkinsfile-epoch-v13 jenkins-v13-governance.groovy ci/v13_generate_governance.mjs ci/v13_addon_checks.sh > reports/v13-complexity/floating-tags.txt || true
+Jenkinsfile-epoch-v13:457:  "pipeline": "Jenkinsfile-epoch-v13",
+README-v13.md:3:V13 starts a new governance era while inheriting the V12 full-platform evidence model.
+README-v13.md:7:- Keep V12 full service and pod coverage.
+Jenkinsfile-router:1:// V13 epoch router. This job is independent from hello-app but inherits V12 evidence patterns.

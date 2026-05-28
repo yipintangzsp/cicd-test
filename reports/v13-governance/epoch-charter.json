@@ -1,0 +1,1 @@
+{"version":"v13","era":"governance","inherits_from":"v12","non_destructive_default":true,"purpose":["daily-platform-patrol","slo-baseline","backup-and-restore-evidence","capacity-runway","release-governance"],"forbidden_without_explicit_approval":["delete-pvc","delete-backup","reset-cluster","prune-images","scale-stateful-to-zero"]}

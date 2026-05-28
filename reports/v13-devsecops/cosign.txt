@@ -1,0 +1,1 @@
+cosign=missing; keep SIGN_IMAGE as contract until key management is ready

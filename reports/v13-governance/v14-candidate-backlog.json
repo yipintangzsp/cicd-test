@@ -1,0 +1,1 @@
+{"version":"v14-candidates","items":["automated-restore-drill-in-isolated-namespace","capacity-trend-from-prometheus-history","release-risk-score-with-change-diff","service-owner-slo-page","backup-age-and-size-attestation"],"rule":"do-not-increase-script-complexity-unless-it-improves-operability"}

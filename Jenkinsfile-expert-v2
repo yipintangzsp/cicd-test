@@ -4,7 +4,7 @@ node {
         disableConcurrentBuilds(),
         buildDiscarder(logRotator(numToKeepStr: '30')),
         parameters([
-            choice(name: 'PIPELINE_VERSION', choices: ['Jenkinsfile-expert-v11', 'Jenkinsfile-expert-v10', 'Jenkinsfile-expert-v9', 'Jenkinsfile-v8-jkvideo', 'Jenkinsfile-expert-v8', 'Jenkinsfile-expert-v7', 'Jenkinsfile-expert-v6', 'Jenkinsfile-expert-v5', 'Jenkinsfile-expert-v4', 'Jenkinsfile-expert-v3', 'Jenkinsfile-expert-v2', 'Jenkinsfile-v2-tested', 'Jenkinsfile_v2', 'Jenkinsfile-v1'], description: '选择要运行的 Jenkinsfile 版本，按大版本到低版本排列。'),
+            choice(name: 'PIPELINE_VERSION', choices: ['Jenkinsfile-expert-v9', 'Jenkinsfile-v8-jkvideo', 'Jenkinsfile-expert-v8', 'Jenkinsfile-expert-v7', 'Jenkinsfile-expert-v6', 'Jenkinsfile-expert-v5', 'Jenkinsfile-expert-v4', 'Jenkinsfile-expert-v3', 'Jenkinsfile-expert-v2', 'Jenkinsfile'], description: '选择要运行的 Jenkinsfile 版本，按大版本到低版本排列。'),
             choice(name: 'DEPLOY_MODE', choices: ['V3.0-ArgoCD-GitOps', 'V2.0-Legacy-Direct'], description: '架构路由'),
             booleanParam(name: 'SKIP_SECURITY_SCAN', defaultValue: false, description: '是否紧急跳过代码与安全的合规扫描？(Break Glass)')
         ])
@@ -22,12 +22,7 @@ node {
 
     try {
         stage('Checkout Code') {
-            sh '''
-                set -eux
-                git clone /var/jenkins_home/github-cache/cicd-test.git .
-                git checkout -f main
-                git remote set-url origin https://github.com/yipintangzsp/cicd-test.git
-            '''
+            checkout scm
             sh 'mkdir -p reports meta'
             env.GIT_COMMIT_ID = sh(returnStdout: true, script: 'git rev-parse --short=7 HEAD').trim()
             env.IMAGE_NAME = "${env.REGISTRY}/${env.APP_NAME}:${env.GIT_COMMIT_ID}"

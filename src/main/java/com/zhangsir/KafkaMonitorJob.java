@@ -16,9 +16,10 @@ public class KafkaMonitorJob {
         // 🎯 核心魔法：开启 Checkpoint (检查点)！
         // 就是这两行代码，能让 Grafana 里那几个 "No data" 的面板瞬间拉满数据！
         // ==========================================
-        env.enableCheckpointing(5000); // 每 5000 毫秒（5秒）做一次状态快照
+        env.enableCheckpointing(10000); // 增加到10秒，减轻磁盘压力
+        env.getCheckpointConfig().setCheckpointInterval(10000); // 每 5000 毫秒（5秒）做一次状态快照
         env.getCheckpointConfig().setCheckpointingMode(CheckpointingMode.EXACTLY_ONCE);
-        env.getCheckpointConfig().setCheckpointTimeout(60000);
+        env.getCheckpointConfig().setCheckpointTimeout(120000); // 增加超时时间到2分钟，防止大状态超时
 
         // 2. 配置 Kafka 数据源
         KafkaSource<String> source = KafkaSource.<String>builder()

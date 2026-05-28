@@ -1,0 +1,11 @@
+helm=present
+terraform=present
+ansible=present
+trivy=missing
+cosign=missing
+kubeconform=missing
+kubectl=present
+docker=missing
+node=present
+git=present
+curl=present

@@ -1,0 +1,1 @@
+trivy-cli=missing; use-harbor-trivy-service-first

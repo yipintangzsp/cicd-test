@@ -1,0 +1,1 @@
+{"version":"v13","principle":"high-cohesion-low-coupling-no-heavy-install-by-default","capabilities":["kubernetes","ci-cd","gitops","observability","devsecops","streaming-data","spark-data-platform","iac"]}

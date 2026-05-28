@@ -1,0 +1,1 @@
+{"items":[{"metadata":{"name":"jenkins","namespace":"ns-devops"},"spec":{"replicas":1},"status":{"readyReplicas":1}}]}

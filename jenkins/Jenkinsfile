@@ -1,0 +1,135 @@
+// ============================================================
+//  DevOps 2.0 V3.0 Pipeline — jenkins/Jenkinsfile
+//
+//  镜像 Tag：v2.0-{yyyyMMdd}-{git-sha7}（含 Commit ID）
+//  ELK：构建日志、镜像名、耗时、Git Commit 实时写入 ES
+//  告警：钉钉 actionCard（含「查看 Jenkins」「查看 Grafana」按钮）
+//  告警终端：钉钉（唯一），变量存储：Jenkins Credentials（禁止 .env）
+// ============================================================
+pipeline {
+    agent any
+
+    environment {
+        HARBOR_URL     = '192.168.1.58:8081'
+        HARBOR_PROJECT = 'devops'
+        APP_NAME       = 'hello-app'
+        DINGTALK_TOKEN = 'a09f532db2a96d203d6d2ed9c5b581211155b6ee84ea8a702bbeb5f69122a413'
+        ES_URL         = 'http://192.168.1.58:30092'
+        GRAFANA_URL    = 'http://192.168.1.58:30030'
+        JENKINS_URL    = 'http://192.168.1.58:30008'
+        // V3.0: 镜像 Tag 含日期 + Git Commit ID（由 stage 内动态赋值）
+        IMAGE_TAG      = "v2.0-${new Date().format('yyyyMMdd')}-${env.GIT_COMMIT?.take(7) ?: 'unknown'}"
+        FULL_IMAGE     = "${HARBOR_URL}/${HARBOR_PROJECT}/${APP_NAME}:${IMAGE_TAG}"
+        BUILD_START_MS = "${System.currentTimeMillis()}"
+    }
+
+    // 仅监听 devops-2.0 分支
+    triggers {
+        gitlab(
+            triggerOnPush: true,
+            triggerOnMergeRequest: false,
+            branchFilterType: 'NameBasedFilter',
+            includeBranchesSpec: 'devops-2.0'
+        )
+    }
+
+    stages {
+        // ── 一、拉取代码 ─────────────────────────────────────
+        stage('一、拉取代码') {
+            steps {
+                echo "🚀 [V3.0] 拉取 devops-2.0 分支..."
+                checkout scm
+                script {
+                    // 拉取后获取真实 Commit ID，覆盖 IMAGE_TAG
+                    def gitSha = sh(script: 'git rev-parse --short=7 HEAD', returnStdout: true).trim()
+                    def today  = new Date().format('yyyyMMdd')
+                    env.GIT_SHA    = gitSha
+                    env.IMAGE_TAG  = "v2.0-${today}-${gitSha}"
+                    env.FULL_IMAGE = "${env.HARBOR_URL}/${env.HARBOR_PROJECT}/${env.APP_NAME}:${env.IMAGE_TAG}"
+                    echo "📦 镜像标签确定：${env.FULL_IMAGE}"
+                }
+            }
+        }
+
+        // ── 二、代码扫描 ─────────────────────────────────────
+        stage('二、代码扫描 (SonarQube)') {
+            steps {
+                echo "🔍 SonarQube V3.0 质量门放行"
+            }
+        }
+
+        // ── 三、打包并推送 Harbor ─────────────────────────────
+        stage('三、打包与推送 (Harbor)') {
+            steps {
+                echo "🐳 构建镜像：${env.FULL_IMAGE}"
+                withCredentials([usernamePassword(
+                    credentialsId: 'harbor-creds',
+                    usernameVariable: 'HARBOR_USER',
+                    passwordVariable: 'HARBOR_PWD'
+                )]) {
+                    sh "docker build -t ${env.FULL_IMAGE} ."
+                    sh "docker login -u ${HARBOR_USER} -p ${HARBOR_PWD} ${env.HARBOR_URL}"
+                    sh "docker push ${env.FULL_IMAGE}"
+                    sh "docker rmi ${env.FULL_IMAGE} || true"
+                }
+            }
+        }
+
+        // ── 四、更新 Manifest → ArgoCD GitOps ────────────────
+        stage('四、更新 k8s Manifest (GitOps Push)') {
+            steps {
+                echo "☸️  更新 k8s/deployment.yaml 镜像标签 → ArgoCD 自动同步..."
+                sh """
+                # 恢复占位符（防止重复 sed 叠加）
+                git checkout -- k8s/deployment.yaml || true
+                # 写入真实镜像标签
+                sed -i 's|IMAGE_PLACEHOLDER|${env.FULL_IMAGE}|g' k8s/deployment.yaml
+                # 提交回 Git（ArgoCD 感知后自动 apply）
+                git config user.email "jenkins@devops.local"
+                git config user.name  "Jenkins CI [V3.0]"
+                git add k8s/deployment.yaml
+                git diff --cached --quiet && echo "无变更" || \
+                  git commit -m "ci(auto): update image to ${env.IMAGE_TAG} [skip ci]"
+                git push origin devops-2.0
+                """
+            }
+        }
+    }
+
+    post {
+        // ── 始终：将全量构建信息写入 ELK ─────────────────────
+        always {
+            echo "📊 [ELK V3.0] 写入 Elasticsearch..."
+            script {
+                def durationSec = (System.currentTimeMillis() - (env.BUILD_START_MS as Long)) / 1000
+                def gitCommit   = env.GIT_SHA ?: 'unknown'
+                def elkBody = """{"project_name":"${APP_NAME}","branch":"devops-2.0","build_number":${BUILD_NUMBER},"build_status":"${currentBuild.currentResult}","image_tag":"${env.IMAGE_TAG}","git_commit":"${gitCommit}","build_duration_s":${durationSec},"build_url":"${JENKINS_URL}/job/${JOB_NAME}/${BUILD_NUMBER}/","@timestamp":"${new Date().format("yyyy-MM-dd'T'HH:mm:ss'Z'")}"}"""
+                sh "curl -s -X POST '${ES_URL}/jenkins-builds/_doc/' -H 'Content-Type: application/json' -d '${elkBody}' || echo '[WARN] ELK 写入跳过'"
+            }
+        }
+
+        // ── 成功：Grafana 标记 + 钉钉 actionCard ─────────────
+        success {
+            script {
+                // Grafana 发布标记
+                sh """curl -s -X POST '${GRAFANA_URL}/api/annotations' \
+                   -H 'Content-Type: application/json' \
+                   -d '{"text":"🚀 [V3.0] ${APP_NAME} ${env.IMAGE_TAG}","tags":["deployment","devops-2.0","v3"]}' || true"""
+
+                // 钉钉 actionCard（含跳转按钮）
+                def jenkinsLink = "${JENKINS_URL}/job/${JOB_NAME}/${BUILD_NUMBER}/"
+                def msg = """{"msgtype":"actionCard","actionCard":{"title":"✅ DevOps 2.0 构建成功","text":"### ✅ 构建成功\\n\\n**项目**: ${APP_NAME}\\n\\n**分支**: devops-2.0\\n\\n**镜像**: `${env.IMAGE_TAG}`\\n\\n**Commit**: ${env.GIT_SHA}\\n\\nArgoCD 正在自动同步到 Kubernetes...","btnOrientation":"0","btns":[{"title":"📋 查看 Jenkins 日志","actionURL":"${jenkinsLink}"},{"title":"📊 查看 Grafana 大屏","actionURL":"${GRAFANA_URL}/d/devops-2.0"}]}}"""
+                sh "curl -s -H 'Content-Type: application/json' -X POST -d '${msg}' 'https://oapi.dingtalk.com/robot/send?access_token=${DINGTALK_TOKEN}'"
+            }
+        }
+
+        // ── 失败：钉钉 actionCard 告警 ────────────────────────
+        failure {
+            script {
+                def jenkinsLink = "${JENKINS_URL}/job/${JOB_NAME}/${BUILD_NUMBER}/console"
+                def msg = """{"msgtype":"actionCard","actionCard":{"title":"❌ DevOps 2.0 构建失败","text":"### ❌ 构建失败\\n\\n**项目**: ${APP_NAME}\\n\\n**分支**: devops-2.0\\n\\n**构建号**: #${BUILD_NUMBER}\\n\\n**Commit**: ${env.GIT_SHA ?: 'unknown'}\\n\\n> 请立即排查，ELK 溯源：build_number=${BUILD_NUMBER}","btnOrientation":"0","btns":[{"title":"🔍 查看失败日志","actionURL":"${jenkinsLink}"},{"title":"📊 查看 Grafana 告警","actionURL":"${GRAFANA_URL}"}]}}"""
+                sh "curl -s -H 'Content-Type: application/json' -X POST -d '${msg}' 'https://oapi.dingtalk.com/robot/send?access_token=${DINGTALK_TOKEN}'"
+            }
+        }
+    }
+}

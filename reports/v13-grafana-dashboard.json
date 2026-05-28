@@ -1,0 +1,285 @@
+{
+  "title": "ZhangLab V13 Governance Era",
+  "tags": [
+    "jenkins",
+    "v13",
+    "platform",
+    "spark"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Platform Health Score",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "expr": "cicd_v13_platform_health_score"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Ready Pods",
+      "gridPos": {
+        "x": 4,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "expr": "sum(cicd_v13_pod_ready)"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Service Probes OK",
+      "gridPos": {
+        "x": 8,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "expr": "sum(cicd_v13_service_probe_ok)"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Spark Ready",
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "expr": "sum(cicd_v13_spark_component_ready)"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Risk Events",
+      "gridPos": {
+        "x": 16,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "expr": "count(cicd_v13_risk_event_severity)"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Ready Nodes",
+      "gridPos": {
+        "x": 20,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "expr": "sum(cicd_v13_node_ready)"
+        }
+      ]
+    },
+    {
+      "type": "gauge",
+      "title": "Layer Health Gauge",
+      "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "avg(cicd_v13_layer_health_score)"
+        }
+      ]
+    },
+    {
+      "type": "bargauge",
+      "title": "Layer Health Ranking",
+      "gridPos": {
+        "x": 8,
+        "y": 4,
+        "w": 16,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "cicd_v13_layer_health_score"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Pod Readiness By Namespace",
+      "gridPos": {
+        "x": 0,
+        "y": 12,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "sum by(namespace) (cicd_v13_pod_ready)"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Service Probe OK By Group",
+      "gridPos": {
+        "x": 12,
+        "y": 12,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "sum by(group) (cicd_v13_service_probe_ok)"
+        }
+      ]
+    },
+    {
+      "type": "barchart",
+      "title": "Restart Hotspots",
+      "gridPos": {
+        "x": 0,
+        "y": 20,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "topk(20, cicd_v13_pod_restarts)"
+        }
+      ]
+    },
+    {
+      "type": "barchart",
+      "title": "Risk Severity Hotspots",
+      "gridPos": {
+        "x": 12,
+        "y": 20,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "topk(20, cicd_v13_risk_event_severity)"
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "Spark Components",
+      "gridPos": {
+        "x": 0,
+        "y": 28,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "cicd_v13_spark_component_ready"
+        }
+      ]
+    },
+    {
+      "type": "barchart",
+      "title": "Recruitment Capability Fit",
+      "gridPos": {
+        "x": 12,
+        "y": 28,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "cicd_v13_market_capability_score"
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "Service Probe Detail",
+      "gridPos": {
+        "x": 0,
+        "y": 36,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "cicd_v13_service_probe_ok"
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "Layer Health Detail",
+      "gridPos": {
+        "x": 12,
+        "y": 36,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "cicd_v13_layer_health_score"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Full Pod Coverage Ratio",
+      "gridPos": {
+        "x": 0,
+        "y": 44,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "expr": "cicd_v13_pod_coverage_ratio"
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "Full Pod Coverage Records",
+      "gridPos": {
+        "x": 6,
+        "y": 44,
+        "w": 18,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "cicd_v13_pod_coverage"
+        }
+      ]
+    }
+  ]
+}

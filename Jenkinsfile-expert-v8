@@ -42,7 +42,7 @@ pipeline {
         gitlab(
             triggerOnPush: true,             // 监听代码 Push 事件
             triggerOnMergeRequest: true,     // 监听 MR (合并请求) 事件
-            branchFilterType: 'NameBasedFilter',
+            branchFilterType: 'NameBasedFilter', 
             includeBranchesSpec: 'main'      // 强烈建议：只拦截 main 分支，防止随便推个测试分支也触发构建
         )
     }
@@ -58,7 +58,7 @@ pipeline {
     }
 
     parameters {
-        choice(name: 'PIPELINE_VERSION', choices: ['Jenkinsfile-expert-v11', 'Jenkinsfile-expert-v10', 'Jenkinsfile-expert-v9', 'Jenkinsfile-v8-jkvideo', 'Jenkinsfile-expert-v8', 'Jenkinsfile-expert-v7', 'Jenkinsfile-expert-v6', 'Jenkinsfile-expert-v5', 'Jenkinsfile-expert-v4', 'Jenkinsfile-expert-v3', 'Jenkinsfile-expert-v2', 'Jenkinsfile-v2-tested', 'Jenkinsfile_v2', 'Jenkinsfile-v1'], description: '选择要运行的 Jenkinsfile 版本，按大版本到低版本排列。')
+        choice(name: 'PIPELINE_VERSION', choices: ['Jenkinsfile-expert-v9', 'Jenkinsfile-v8-jkvideo', 'Jenkinsfile-expert-v8', 'Jenkinsfile-expert-v7', 'Jenkinsfile-expert-v6', 'Jenkinsfile-expert-v5', 'Jenkinsfile-expert-v4', 'Jenkinsfile-expert-v3', 'Jenkinsfile-expert-v2', 'Jenkinsfile'], description: '选择要运行的 Jenkinsfile 版本，按大版本到低版本排列。')
         choice(name: 'DEPLOY_ENV', choices: ['dev', 'test', 'prod'], description: '选择部署环境')
         booleanParam(name: 'SKIP_SECURITY_SCAN', defaultValue: false, description: '跳过 Sonar/Trivy 安全扫描')
         booleanParam(name: 'RUN_UNIT_TESTS', defaultValue: true, description: '执行单元测试')
@@ -67,7 +67,7 @@ pipeline {
         choice(name: 'FLINK_RUN_MODE', choices: ['run', 'skip'], description: '是否执行 Flink 任务发布')
         // 修复 1：把 ns-app 改成你实际的命名空间 ns-apps
         string(name: 'K8S_NAMESPACE', defaultValue: 'ns-apps', description: '应用部署后的命名空间')
-
+        
         // 修复 2：把健康检查的 URL 改成可以直接访问的 K8s 内部 Service 地址，绕过域名解析的坑
         string(name: 'APP_HEALTH_URL', defaultValue: 'http://hello-app.ns-apps.svc.cluster.local/', description: '部署后健康检查地址')
     }
@@ -96,22 +96,17 @@ pipeline {
     }
 
     stages {
-
+        
         stage('清理环境') {
             steps {
                 // ✅ 将清理环境放在最开头，每次构建前暴力扫除旧的权限残留
-                deleteDir()
+                deleteDir() 
             }
         }
 
         stage('0. 初始化上下文') {
             steps {
-                sh '''
-                set -eux
-                git clone /var/jenkins_home/github-cache/cicd-test.git .
-                git checkout -f main
-                git remote set-url origin https://github.com/yipintangzsp/cicd-test.git
-            '''
+                checkout scm
                 script {
                     env.GIT_COMMIT_ID = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
                     env.GIT_BRANCH_NAME = sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim()
@@ -142,7 +137,7 @@ EOF
                 }
             }
         }
-
+        
         stage('1. 执行前预检') {
             steps {
                 unstash 'workspace-src'
@@ -182,13 +177,13 @@ EOF
                             docker rm -f temp-trivy-fs || true
                             docker run -d --name temp-trivy-fs --entrypoint /bin/sh -w /work aquasec/trivy:${TRIVY_VER} -c 'sleep 3600'
                             docker cp . temp-trivy-fs:/work
-
+                            
                             # 1. 在 Jenkins 宿主机上创建 reports 目录
                             mkdir -p reports
-
+                            
                             # 2. 直接把容器的输出用管道输送到宿主机的 reports 目录里（注意没有 /work 前缀了！）
                             docker exec temp-trivy-fs trivy fs /work --scanners secret --format table | tee reports/trivy-fs.txt
-
+                            
                             docker rm -f temp-trivy-fs
                         '''
                     }
@@ -473,7 +468,7 @@ EOF
                     echo "👉 等待 Deployment Rollout"
                     kubectl rollout status deployment/hello-app -n ns-apps --timeout=180s
                     kubectl wait --for=condition=Ready pod -n ns-apps -l app=hello-app --timeout=120s
-
+                    
                     echo "👉 执行应用健康检查 (K8s原生内网穿透测试)"
                     curl -fsS "${APP_HEALTH_URL}" > /dev/null
                     echo "✅ 业务健康检查通过！"

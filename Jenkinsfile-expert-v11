@@ -17,12 +17,8 @@ pipeline {
         buildDiscarder(logRotator(numToKeepStr: '30', artifactNumToKeepStr: '20'))
     }
 
-    triggers {
-        pollSCM('* * * * *')
-    }
-
     parameters {
-        choice(name: 'PIPELINE_VERSION', choices: ['Jenkinsfile-expert-v12', 'Jenkinsfile-expert-v11', 'Jenkinsfile-expert-v10', 'Jenkinsfile-expert-v9', 'Jenkinsfile-v8-jkvideo', 'Jenkinsfile-expert-v8', 'Jenkinsfile-expert-v7', 'Jenkinsfile-expert-v6', 'Jenkinsfile-expert-v5', 'Jenkinsfile-expert-v4', 'Jenkinsfile-expert-v3', 'Jenkinsfile-expert-v2', 'Jenkinsfile-v2-tested', 'Jenkinsfile_v2', 'Jenkinsfile-v1'], description: 'Select Jenkinsfile version, newest first.')
+        choice(name: 'PIPELINE_VERSION', choices: ['Jenkinsfile-expert-v12', 'Jenkinsfile-expert-v11', 'Jenkinsfile-expert-v10', 'Jenkinsfile-expert-v9', 'Jenkinsfile-v8-jkvideo', 'Jenkinsfile-expert-v8', 'Jenkinsfile-expert-v7', 'Jenkinsfile-expert-v6', 'Jenkinsfile-expert-v5', 'Jenkinsfile-expert-v4', 'Jenkinsfile-expert-v3', 'Jenkinsfile-expert-v2', 'Jenkinsfile'], description: 'Select Jenkinsfile version, newest first.')
         choice(name: 'DEPLOY_ENV', choices: ['dev', 'test', 'prod'], description: '目标部署环境')
         booleanParam(name: 'SKIP_SECURITY_SCAN', defaultValue: false, description: '跳过安全扫描')
         booleanParam(name: 'RUN_UNIT_TESTS', defaultValue: true, description: '执行单元测试')
@@ -89,12 +85,7 @@ pipeline {
 
         stage('0. 初始化上下文') {
             steps {
-                sh '''
-                set -eux
-                git clone /var/jenkins_home/github-cache/cicd-test.git .
-                git checkout -f main
-                git remote set-url origin https://github.com/yipintangzsp/cicd-test.git
-            '''
+                checkout scm
                 script {
                     V11 = load('jenkins-v11-evidence.groovy')
                     sh 'mkdir -p meta reports'
@@ -569,7 +560,7 @@ spec:
         - --no-autoupdate
         - run
         - --token
-        - \\$(CLOUDFLARE_TUNNEL_TOKEN)
+        - \$(CLOUDFLARE_TUNNEL_TOKEN)
         env:
         - name: CLOUDFLARE_TUNNEL_TOKEN
           valueFrom:

@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ZhangLab DevOps V13 Control Surface</title>
+  <style>
+    :root { color-scheme: dark; --ink:#ecf7ff; --muted:#9fb2c9; --line:rgba(145,180,220,.24); --bg:#08111e; --panel:rgba(12,25,43,.78); --panel2:rgba(18,37,62,.92); --cyan:#22d3ee; --amber:#f59e0b; --red:#ef4444; --blue:#60a5fa; --green:#34d399; --violet:#a78bfa; }
+    * { box-sizing:border-box; }
+    body { margin:0; font-family:"Avenir Next", "Segoe UI", -apple-system, sans-serif; background:radial-gradient(circle at 18% 5%,rgba(34,211,238,.20),transparent 30%),radial-gradient(circle at 82% 8%,rgba(167,139,250,.16),transparent 29%),linear-gradient(180deg,#08111e 0%,#0c1728 54%,#07101b 100%); color:var(--ink); min-height:100vh; }
+    body:before { content:""; position:fixed; inset:0; pointer-events:none; background:linear-gradient(rgba(255,255,255,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px); background-size:44px 44px; mask-image:linear-gradient(to bottom,black,transparent 80%); }
+    header { min-height:330px; padding:42px 36px 30px; color:white; display:grid; grid-template-columns:minmax(0,1.2fr) minmax(320px,.8fr); gap:24px; align-items:end; position:relative; overflow:hidden; border-bottom:1px solid var(--line); }
+    header:after { content:""; position:absolute; inset:auto -8% -42% 28%; height:260px; background:conic-gradient(from 120deg,var(--cyan),transparent,var(--violet),transparent,var(--green)); filter:blur(54px); opacity:.32; animation:pulse 6s ease-in-out infinite alternate; }
+    header h1 { margin:0; font-size:clamp(34px,5vw,72px); line-height:.96; letter-spacing:0; max-width:920px; }
+    header p { margin:18px 0 0; color:#c6d9ea; font-size:16px; }
+    .hero-meter { position:relative; z-index:1; border:1px solid var(--line); background:linear-gradient(145deg,rgba(12,25,43,.82),rgba(14,39,62,.58)); border-radius:8px; padding:22px; box-shadow:0 24px 80px rgba(0,0,0,.28); }
+    .hero-score { font-size:74px; font-weight:900; line-height:1; color:var(--green); text-shadow:0 0 24px rgba(52,211,153,.25); }
+    .hero-meter span { color:var(--muted); }
+    main { padding:24px 34px 36px; max-width:1680px; margin:0 auto; }
+    .toolbar { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:18px; }
+    .pill { border:1px solid var(--line); background:rgba(12,25,43,.72); border-radius:999px; padding:8px 12px; color:var(--muted); font-size:13px; backdrop-filter:blur(14px); }
+    .search { min-width:280px; flex:1; border:1px solid var(--line); border-radius:8px; padding:11px 13px; font:inherit; background:rgba(5,13,24,.76); color:var(--ink); outline:none; }
+    .search:focus { border-color:var(--cyan); box-shadow:0 0 0 3px rgba(34,211,238,.12); }
+    .viewbar { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; margin:0 0 18px; }
+    .view-btn { appearance:none; border:1px solid var(--line); background:linear-gradient(145deg,rgba(12,25,43,.78),rgba(27,45,72,.58)); color:var(--ink); border-radius:8px; padding:13px 12px; font:inherit; font-weight:800; cursor:pointer; text-align:left; position:relative; overflow:hidden; transition:transform .18s ease,border-color .18s ease,background .18s ease; }
+    .view-btn:after { content:""; position:absolute; inset:auto 10px 8px 10px; height:2px; background:linear-gradient(90deg,var(--cyan),var(--violet)); transform:scaleX(0); transform-origin:left; transition:transform .2s ease; }
+    .view-btn:hover { transform:translateY(-2px); border-color:rgba(34,211,238,.72); }
+    .view-btn.active { background:linear-gradient(145deg,rgba(34,211,238,.22),rgba(96,165,250,.16)); border-color:rgba(34,211,238,.78); box-shadow:0 0 32px rgba(34,211,238,.12); }
+    .view-btn.active:after { transform:scaleX(1); }
+    .view-btn small { display:block; margin-top:4px; color:var(--muted); font-weight:600; }
+    .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(185px,1fr)); gap:14px; margin-bottom:18px; }
+    .card, .panel { background:var(--panel); border:1px solid var(--line); border-radius:8px; box-shadow:0 18px 60px rgba(0,0,0,.22); backdrop-filter:blur(18px); }
+    .card { padding:16px; min-height:118px; position:relative; overflow:hidden; }
+    .card:after { content:""; position:absolute; inset:auto 12px 10px 12px; height:3px; border-radius:999px; background:linear-gradient(90deg,var(--cyan),var(--green),var(--amber)); transform-origin:left; animation:grow .9s ease both; }
+    .metric { font-size:34px; line-height:1; font-weight:900; }
+    .label { color:var(--muted); margin-top:8px; font-size:14px; }
+    .grid { display:grid; grid-template-columns:repeat(12,1fr); gap:14px; align-items:start; }
+    .panel { padding:16px; min-height:280px; }
+    .view-panel { animation:panelIn .28s ease both; }
+    .view-panel.is-hidden { display:none; }
+    .wide { grid-column:span 12; }
+    .half { grid-column:span 6; }
+    .third { grid-column:span 4; }
+    h2 { margin:0 0 12px; font-size:18px; letter-spacing:0; }
+    svg { width:100%; min-height:210px; display:block; }
+    table { width:100%; border-collapse:collapse; font-size:13px; }
+    th, td { padding:9px 10px; border-bottom:1px solid rgba(219,228,239,.12); text-align:left; vertical-align:top; }
+    th { background:rgba(96,165,250,.12); color:#d7e6f8; position:sticky; top:0; }
+    .table-wrap { max-height:430px; overflow:auto; border:1px solid var(--line); border-radius:8px; }
+    .ok { color:var(--green); font-weight:700; }
+    .warn { color:var(--amber); font-weight:700; }
+    .bad { color:var(--red); font-weight:700; }
+    .legend { display:flex; gap:12px; flex-wrap:wrap; color:var(--muted); font-size:12px; margin-top:8px; }
+    code { background:rgba(245,158,11,.14); color:#ffdc93; padding:2px 5px; border-radius:4px; }
+    @keyframes pulse { from { transform:scale(.96) rotate(0deg); } to { transform:scale(1.08) rotate(9deg); } }
+    @keyframes grow { from { transform:scaleX(0); } to { transform:scaleX(1); } }
+    @keyframes panelIn { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
+    @media (max-width: 980px) { header { grid-template-columns:1fr; min-height:360px; } header h1 { font-size:34px; } main { padding:18px; } .half,.third { grid-column:span 12; } }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>ZhangLab DevOps V13 Control Surface</h1>
+      <p>Build #42 · 0.0.42 · commit test123 · Spark-aware full-platform evidence · platform.heil.ccwu.cc</p>
+    </div>
+    <div class="hero-meter">
+      <span>Composite platform health</span>
+      <div class="hero-score">78</div>
+      <span>2/3 probes · 2/2 covered pods · 3 risk events</span>
+    </div>
+  </header>
+  <main>
+    <div class="toolbar">
+      <span class="pill">public <code>https://platform.heil.ccwu.cc/</code></span>
+      <span class="pill">internal <code>http://192.168.1.58:30087/</code></span>
+      <span class="pill" id="clock">refreshing</span>
+      <input class="search" id="filter" placeholder="Filter services, pods, namespaces, Spark components">
+    </div>
+    <nav class="viewbar" aria-label="Platform views">
+      <button class="view-btn active" data-target-view="overview">Command<small>健康、层级、探针</small></button>
+      <button class="view-btn" data-target-view="risk">Risk<small>风险热力、重启、端点</small></button>
+      <button class="view-btn" data-target-view="data">Data Flow<small>Spark、Kafka、Flink、BI</small></button>
+      <button class="view-btn" data-target-view="services">Services<small>服务矩阵、Pod 明细</small></button>
+      <button class="view-btn" data-target-view="market">Fit<small>招聘能力、工具缺口</small></button>
+    </nav>
+    <section class="cards" id="cards"></section>
+    <section class="grid">
+      <div class="panel half view-panel" data-view="overview data"><h2>Layer Health Radar</h2><svg id="layerChart"></svg><div class="legend">Cluster, DevOps, data, observability and app layer health in one view.</div></div>
+      <div class="panel half view-panel" data-view="risk overview"><h2>Risk Event Heat</h2><svg id="riskChart"></svg><div class="legend">Risk severity from failed probes, endpoint gaps, restarts and not-ready pods.</div></div>
+      <div class="panel half view-panel" data-view="overview services"><h2>Namespace Readiness</h2><svg id="namespaceChart"></svg><div class="legend">Pod readiness and restart load by namespace.</div></div>
+      <div class="panel half view-panel" data-view="overview services"><h2>Probe Group Status</h2><svg id="probeChart"></svg><div class="legend">HTTP/DNS/service checks grouped by platform layer.</div></div>
+      <div class="panel third view-panel" data-view="data overview"><h2>Spark Components</h2><div id="sparkPanel"></div></div>
+      <div class="panel third view-panel" data-view="risk services"><h2>Restart Hotspots</h2><svg id="restartChart"></svg></div>
+      <div class="panel third view-panel" data-view="overview"><h2>Coverage Rings</h2><svg id="ringChart"></svg></div>
+      <div class="panel half view-panel" data-view="market data"><h2>Recruitment Capability Fit</h2><svg id="marketChart"></svg><div class="legend">High-frequency DevOps/SRE/data-platform requirements mapped to installed services.</div></div>
+      <div class="panel half view-panel" data-view="data"><h2>Data Lineage</h2><div class="table-wrap"><table id="lineageTable"></table></div></div>
+      <div class="panel half view-panel" data-view="market"><h2>Capability Gaps</h2><div class="table-wrap"><table id="gapTable"></table></div></div>
+      <div class="panel half view-panel" data-view="risk services"><h2>No Endpoint Watchlist</h2><div class="table-wrap"><table id="endpointTable"></table></div></div>
+      <div class="panel wide view-panel" data-view="risk"><h2>Risk Event Ledger</h2><div class="table-wrap"><table id="riskTable"></table></div></div>
+      <div class="panel wide view-panel" data-view="services"><h2>Service Probe Matrix</h2><div class="table-wrap"><table id="probeTable"></table></div></div>
+      <div class="panel wide view-panel" data-view="services"><h2>Pod Evidence Matrix</h2><div class="table-wrap"><table id="podTable"></table></div></div>
+    </section>
+  </main>
+  <script id="evidence-data" type="application/json">{"summary":{"timestamp":"2026-05-26T21:01:17Z","job":"v13-test","build":"42","semver":"0.0.42","commit":"test123","pipelineVersion":"v13","publicUrl":"https://platform.heil.ccwu.cc/","portalUrl":"http://192.168.1.58:30087/","podTotal":2,"podReady":2,"podAttention":0,"podCoverageLiveTotal":2,"podCoverageRecordTotal":2,"podCoverageReady":2,"podCoverageNotHealthy":0,"podCoverageComplete":true,"podCoverageRatio":100,"restartTotal":0,"nodeTotal":0,"nodeReady":0,"serviceTotal":2,"serviceEndpointReady":0,"workloadTotal":0,"workloadReady":0,"serviceProbeTotal":3,"serviceProbeOk":2,"sparkPods":0,"sparkPodsReady":0,"sparkServices":0,"sparkProbeOk":0,"sparkProbeTotal":0,"platformHealthScore":78,"governanceGate":"PASS","sloAvailabilityPercent":90,"layerCount":6,"riskEventTotal":3,"criticalRiskEvents":0},"jobMarketFit":[{"capability":"Kubernetes operations","demand":"high","platform":"kube-system, metrics-server, Traefik, multi-node k3s","coverage":"covered","score":100},{"capability":"CI/CD automation","demand":"high","platform":"Jenkins, GitLab webhook, GitHub webhook relay","coverage":"covered","score":100},{"capability":"GitOps delivery","demand":"high","platform":"ArgoCD applications and manifest dry-run gates","coverage":"covered","score":92},{"capability":"Observability","demand":"high","platform":"Prometheus, Grafana, Elasticsearch, Kibana, Loki, Jaeger, Zabbix, OpenTelemetry Collector","coverage":"covered","score":98},{"capability":"DevSecOps","demand":"high","platform":"SonarQube, Harbor Trivy service, Trivy CLI, Cosign image signing tool, image policy gates","coverage":"partial","score":86},{"capability":"Streaming data","demand":"medium-high","platform":"Kafka, Filebeat Kafka link, Flink","coverage":"covered","score":90},{"capability":"Spark/data platform","demand":"medium-high","platform":"Spark operator, Airflow, Trino, Superset, MinIO","coverage":"covered","score":88},{"capability":"Infrastructure as Code","demand":"high","platform":"Kubernetes manifests, ArgoCD, Helm, Terraform and Kubeconform in Jenkins tools path; Ansible deferred because Jenkins has no Python runtime","coverage":"partial","score":84}],"dataLineage":[{"from":"Jenkins","to":"Filebeat","purpose":"pipeline console and build evidence collection","status":"covered"},{"from":"Filebeat","to":"Kafka","purpose":"log sharing stream","status":"covered"},{"from":"Kafka","to":"Flink","purpose":"stream processing readiness","status":"covered"},{"from":"Spark","to":"MinIO","purpose":"batch and artifact lake path","status":"check"},{"from":"Airflow","to":"Trino","purpose":"workflow orchestration and SQL query surface","status":"covered"},{"from":"Trino","to":"Superset","purpose":"BI/dashboard consumption","status":"covered"},{"from":"Jenkins","to":"Elasticsearch/Kibana","purpose":"run result and visual evidence","status":"covered"},{"from":"OpenTelemetry Collector","to":"Prometheus/Jaeger/Kibana-ready pipelines","purpose":"unified OTLP entrypoint for future metrics, traces and logs","status":"covered"},{"from":"Prometheus","to":"Grafana/Zabbix","purpose":"metrics and alert display","status":"covered"}],"capabilityGaps":[{"name":"helm","reason":"common in job descriptions and available in Jenkins tools path","action":"use for chart validation only when a service owns a chart lifecycle"},{"name":"terraform","reason":"common for cloud infrastructure provisioning and available in Jenkins tools path","action":"use for plan/validate first; do not apply cloud changes without review"},{"name":"ansible","reason":"common for host configuration, but current Kubernetes API and GitOps cover runtime changes","action":"install only for repeatable host bootstrap"},{"name":"trivy-cli","reason":"available in Jenkins tools path, extracted from the local Harbor Trivy image to avoid slow upstream downloads","action":"use for filesystem and image scan evidence"},{"name":"cosign","reason":"available in Jenkins tools path, extracted from a verified v3.0.6 Chainguard image","action":"use only after signing keys are prepared"},{"name":"kubeconform","reason":"available in Jenkins tools path for Kubernetes manifest schema validation","action":"run together with kubectl dry-run before GitOps sync"}],"layerSummary":[{"layer":"cluster-core","pods":0,"readyPods":0,"services":0,"readyServices":0,"probes":0,"okProbes":0,"restarts":0,"healthScore":100},{"layer":"devops-control","pods":1,"readyPods":1,"services":0,"readyServices":0,"probes":0,"okProbes":0,"restarts":0,"healthScore":100},{"layer":"data-platform","pods":0,"readyPods":0,"services":0,"readyServices":0,"probes":0,"okProbes":0,"restarts":0,"healthScore":100},{"layer":"observability","pods":0,"readyPods":0,"services":1,"readyServices":0,"probes":1,"okProbes":0,"restarts":0,"healthScore":33},{"layer":"application","pods":1,"readyPods":1,"services":1,"readyServices":0,"probes":2,"okProbes":2,"restarts":0,"healthScore":67},{"layer":"platform-support","pods":0,"readyPods":0,"services":0,"readyServices":0,"probes":0,"okProbes":0,"restarts":0,"healthScore":100}],"riskEvents":[{"severity":75,"category":"probe-failed","layer":"observability","namespace":"default","name":"elasticsearch","message":"default/elasticsearch probe status http_unreachable"},{"severity":70,"category":"service-no-endpoint","layer":"application","namespace":"ns-apps","name":"hello-app","message":"ns-apps/hello-app has no ready endpoint"},{"severity":70,"category":"service-no-endpoint","layer":"observability","namespace":"default","name":"elasticsearch","message":"default/elasticsearch has no ready endpoint"}],"namespaceSummary":[{"namespace":"ns-apps","pods":1,"ready":1,"restarts":0},{"namespace":"ns-devops","pods":1,"ready":1,"restarts":0}],"probeGroups":[{"group":"all-services","total":3,"ok":2,"failed":1}],"nodes":[],"spark":{"pods":[],"services":[],"probes":[]},"pods":[{"namespace":"ns-devops","name":"jenkins","phase":"Running","ready":true,"restarts":0,"podIP":"","node":"","containers":[],"images":[],"owner":"","coverageStatus":"covered"},{"namespace":"ns-apps","name":"hello-app","phase":"Running","ready":true,"restarts":0,"podIP":"","node":"","containers":[],"images":[],"owner":"","coverageStatus":"covered"}],"services":[{"namespace":"ns-apps","name":"hello-app","type":"ClusterIP","clusterIP":"10.43.0.2","ports":"port:80","endpointTotal":0,"endpointReady":0},{"namespace":"default","name":"elasticsearch","type":"ClusterIP","clusterIP":"None","ports":"","endpointTotal":0,"endpointReady":0}],"workloads":[],"serviceProbes":[{"pipeline_version":"v13","build":"42","group":"all-services","namespace":"ns-apps","kind":"service","name":"hello-app","status":"ok","http_status":"200"},{"pipeline_version":"v13","build":"42","group":"all-services","namespace":"default","kind":"service","name":"elasticsearch","status":"http_unreachable","http_status":"000"},{"pipeline_version":"v13","build":"42","group":"all-services","namespace":"ns-apps","kind":"deploy","name":"hello-app","status":"ok","http_status":"200"}],"restartHotspots":[],"serviceEndpointIssues":[{"namespace":"ns-apps","name":"hello-app","type":"ClusterIP","clusterIP":"10.43.0.2","ports":"port:80","endpointTotal":0,"endpointReady":0},{"namespace":"default","name":"elasticsearch","type":"ClusterIP","clusterIP":"None","ports":"","endpointTotal":0,"endpointReady":0}],"failedProbes":[{"pipeline_version":"v13","build":"42","group":"all-services","namespace":"default","kind":"service","name":"elasticsearch","status":"http_unreachable","http_status":"000"}],"podCoverage":{},"governance":{"epochCharter":{"version":"v13","era":"governance"},"backupInventory":{"pvcCount":5,"pvCount":3,"redactedSecretInventory":true},"restoreDrill":{"verdict":"dry-run-pass","mode":"evidence-only"},"sloBudget":{"serviceProbeTotal":20,"serviceProbeOk":18,"availabilityPercent":90},"capacityRunway":{"nodes":[{"name":"worker-1","cpu":"4","memory":"8Gi"}]},"releaseGate":{"pass":true,"checks":{"slo":true,"backupInventory":true,"restoreDryRun":true}},"v14Backlog":{"items":["feature-a"],"rule":"keep-small"}}}</script>
+  <script>
+    const evidence = JSON.parse(document.getElementById('evidence-data').textContent);
+    const fmt = new Intl.NumberFormat('en-US');
+    const el = (id) => document.getElementById(id);
+    const esc = (value) => String(value == null ? '' : value).replace(/[&<>"]/g, (ch) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]));
+    const ratio = (a,b) => b ? Math.round(a * 100 / b) : 0;
+    function renderCards() {
+      const s = evidence.summary;
+      const cards = [
+        [s.platformHealthScore, 'Platform health score'],
+        [s.podCoverageRecordTotal + '/' + s.podCoverageLiveTotal, 'Pods covered by evidence'],
+        [s.podCoverageRatio + '%', 'Pod coverage ratio'],
+        [s.podReady + '/' + s.podTotal, 'Pods ready'],
+        [s.serviceEndpointReady + '/' + s.serviceTotal, 'Services with endpoints'],
+        [s.workloadReady + '/' + s.workloadTotal, 'Workloads ready'],
+        [s.serviceProbeOk + '/' + s.serviceProbeTotal, 'Service probes OK'],
+        [s.sparkPodsReady + '/' + s.sparkPods, 'Spark pods ready'],
+        [s.nodeReady + '/' + s.nodeTotal, 'Nodes ready'],
+        [s.riskEventTotal, 'Risk events tracked'],
+        [fmt.format(s.restartTotal), 'Total restarts observed'],
+      ];
+      el('cards').innerHTML = cards.map((c) => '<div class="card"><div class="metric">' + esc(c[0]) + '</div><div class="label">' + esc(c[1]) + '</div></div>').join('');
+    }
+    function barChart(node, rows, labelKey, valueKey, maxValue, color) {
+      const width = 860, rowH = 28, top = 16, left = 190, height = Math.max(220, top + rows.length * rowH + 20);
+      const max = Math.max(1, maxValue || Math.max(1, ...rows.map((row) => row[valueKey] || 0)));
+      const body = rows.map((row, index) => {
+        const y = top + index * rowH;
+        const value = Number(row[valueKey] || 0);
+        const w = Math.round((width - left - 30) * value / max);
+        return '<text x="0" y="' + (y + 17) + '" fill="#c6d9ea" font-size="12">' + esc(row[labelKey]) + '</text><rect x="' + left + '" y="' + (y + 4) + '" width="' + w + '" height="16" rx="4" fill="' + color + '"><animate attributeName="width" from="0" to="' + w + '" dur=".7s" fill="freeze"/></rect><text x="' + (left + w + 8) + '" y="' + (y + 17) + '" fill="#9fb2c9" font-size="12">' + value + '</text>';
+      }).join('');
+      node.setAttribute('viewBox', '0 0 ' + width + ' ' + height);
+      node.innerHTML = body;
+    }
+    function stackedProbeChart() {
+      const rows = evidence.probeGroups.slice(0, 12);
+      const width = 860, rowH = 30, left = 185, height = Math.max(220, rows.length * rowH + 34);
+      const max = Math.max(1, ...rows.map((row) => row.total));
+      el('probeChart').setAttribute('viewBox', '0 0 ' + width + ' ' + height);
+      el('probeChart').innerHTML = rows.map((row, i) => {
+        const y = 18 + i * rowH;
+        const okW = Math.round((width - left - 40) * row.ok / max);
+        const badW = Math.round((width - left - 40) * row.failed / max);
+        return '<text x="0" y="' + (y + 15) + '" fill="#c6d9ea" font-size="12">' + esc(row.group) + '</text><rect x="' + left + '" y="' + (y + 2) + '" width="' + okW + '" height="17" rx="4" fill="#34d399"></rect><rect x="' + (left + okW + 2) + '" y="' + (y + 2) + '" width="' + badW + '" height="17" rx="4" fill="#ef4444"></rect><text x="' + (left + okW + badW + 10) + '" y="' + (y + 15) + '" fill="#9fb2c9" font-size="12">' + row.ok + '/' + row.total + '</text>';
+      }).join('');
+    }
+    function ringChart() {
+      const s = evidence.summary;
+      const rings = [
+        ['Coverage', s.podCoverageRecordTotal, s.podCoverageLiveTotal, '#22d3ee'],
+        ['Pods', s.podReady, s.podTotal, '#0f9f9a'],
+        ['Services', s.serviceEndpointReady, s.serviceTotal, '#2e6bd7'],
+        ['Spark', s.sparkPodsReady, s.sparkPods || 1, '#d9822b'],
+      ];
+      el('ringChart').setAttribute('viewBox', '0 0 520 240');
+      el('ringChart').innerHTML = rings.map((r, i) => {
+        const x = 65 + i * 130, pct = ratio(r[1], r[2]), dash = pct * 2.64;
+        return '<circle cx="' + x + '" cy="92" r="42" fill="none" stroke="rgba(219,228,239,.16)" stroke-width="14"></circle><circle cx="' + x + '" cy="92" r="42" fill="none" stroke="' + r[3] + '" stroke-width="14" stroke-dasharray="' + dash + ' 264" transform="rotate(-90 ' + x + ' 92)"></circle><text x="' + x + '" y="98" text-anchor="middle" font-size="20" font-weight="800" fill="#ecf7ff">' + pct + '%</text><text x="' + x + '" y="158" text-anchor="middle" font-size="13" fill="#9fb2c9">' + r[0] + '</text>';
+      }).join('');
+    }
+    function layerChart() {
+      const rows = evidence.layerSummary;
+      const cx = 260, cy = 125, maxR = 92;
+      const points = rows.map((row, i) => {
+        const angle = -Math.PI / 2 + i * Math.PI * 2 / rows.length;
+        const r = maxR * row.healthScore / 100;
+        return { row, x: cx + Math.cos(angle) * r, y: cy + Math.sin(angle) * r, lx: cx + Math.cos(angle) * (maxR + 34), ly: cy + Math.sin(angle) * (maxR + 34) };
+      });
+      const polygon = points.map((p) => p.x + ',' + p.y).join(' ');
+      el('layerChart').setAttribute('viewBox', '0 0 520 270');
+      el('layerChart').innerHTML = [25,50,75,100].map((v) => '<circle cx="' + cx + '" cy="' + cy + '" r="' + (maxR*v/100) + '" fill="none" stroke="rgba(219,228,239,.15)" stroke-width="1"></circle>').join('') +
+        '<polygon points="' + polygon + '" fill="rgba(34,211,238,.20)" stroke="#22d3ee" stroke-width="3"><animate attributeName="opacity" from=".2" to="1" dur=".8s" fill="freeze"/></polygon>' +
+        points.map((p) => '<circle cx="' + p.x + '" cy="' + p.y + '" r="5" fill="#34d399"></circle><text x="' + p.lx + '" y="' + p.ly + '" text-anchor="middle" fill="#c6d9ea" font-size="11">' + esc(p.row.layer) + ' ' + p.row.healthScore + '</text>').join('');
+    }
+    function riskChart() {
+      const rows = evidence.riskEvents.slice(0, 16);
+      const width = 860, cellW = 92, cellH = 42;
+      el('riskChart').setAttribute('viewBox', '0 0 ' + width + ' 230');
+      el('riskChart').innerHTML = rows.map((risk, i) => {
+        const x = (i % 8) * (cellW + 10), y = Math.floor(i / 8) * (cellH + 28) + 20;
+        const color = risk.severity >= 85 ? '#ef4444' : risk.severity >= 70 ? '#f59e0b' : '#60a5fa';
+        return '<rect x="' + x + '" y="' + y + '" width="' + cellW + '" height="' + cellH + '" rx="6" fill="' + color + '" opacity=".86"></rect><text x="' + (x + 8) + '" y="' + (y + 17) + '" fill="#06101d" font-size="11" font-weight="800">' + risk.severity + '</text><text x="' + (x + 8) + '" y="' + (y + 32) + '" fill="#06101d" font-size="9">' + esc(risk.category.slice(0,12)) + '</text><text x="' + x + '" y="' + (y + cellH + 15) + '" fill="#9fb2c9" font-size="9">' + esc((risk.namespace + '/' + risk.name).slice(0,18)) + '</text>';
+      }).join('') || '<text x="20" y="80" fill="#34d399" font-size="20">No active risk events</text>';
+    }
+    function sparkPanel() {
+      const pods = evidence.spark.pods;
+      const services = evidence.spark.services;
+      const probes = evidence.spark.probes;
+      const podRows = pods.map((pod) => '<tr><td>' + esc(pod.namespace) + '</td><td>' + esc(pod.name) + '</td><td class="' + (pod.ready ? 'ok' : 'bad') + '">' + (pod.ready ? 'READY' : 'CHECK') + '</td><td>' + pod.restarts + '</td></tr>').join('');
+      const serviceRows = services.map((svc) => '<tr><td>' + esc(svc.namespace) + '</td><td>' + esc(svc.name) + '</td><td>' + svc.endpointReady + '/' + svc.endpointTotal + '</td><td>' + esc(svc.ports) + '</td></tr>').join('');
+      const probeRows = probes.map((probe) => '<tr><td>' + esc(probe.group) + '</td><td>' + esc(probe.name) + '</td><td class="' + (probe.status === 'ok' ? 'ok' : 'bad') + '">' + esc(probe.status) + '</td></tr>').join('');
+      el('sparkPanel').innerHTML = '<div class="label">Spark operator, webhook, service endpoints, and probe evidence.</div><div class="table-wrap" style="max-height:325px"><table><thead><tr><th>Scope</th><th>Name</th><th>Status</th><th>Extra</th></tr></thead><tbody>' + podRows + serviceRows + probeRows + '</tbody></table></div>';
+    }
+    function table(node, headers, rows) {
+      node.innerHTML = '<thead><tr>' + headers.map((h) => '<th>' + esc(h[0]) + '</th>').join('') + '</tr></thead><tbody>' + rows.map((row) => '<tr>' + headers.map((h) => '<td>' + esc(row[h[1]]) + '</td>').join('') + '</tr>').join('') + '</tbody>';
+    }
+    function setView(view) {
+      document.querySelectorAll('.view-btn').forEach((button) => button.classList.toggle('active', button.dataset.targetView === view));
+      document.querySelectorAll('.view-panel').forEach((panel) => {
+        const views = (panel.dataset.view || '').split(' ');
+        panel.classList.toggle('is-hidden', !views.includes(view));
+      });
+      window.location.hash = view;
+    }
+    function applyFilter() {
+      const q = el('filter').value.trim().toLowerCase();
+      const probes = evidence.serviceProbes.filter((row) => !q || JSON.stringify(row).toLowerCase().includes(q));
+      const pods = evidence.pods.filter((row) => !q || JSON.stringify(row).toLowerCase().includes(q));
+      table(el('probeTable'), [['Group','group'],['Namespace','namespace'],['Object','name'],['Status','status'],['HTTP','http_status']], probes);
+      table(el('podTable'), [['Namespace','namespace'],['Pod','name'],['Phase','phase'],['Ready','ready'],['Coverage','coverageStatus'],['Restarts','restarts'],['Node','node'],['Images','images']], pods);
+      table(el('lineageTable'), [['From','from'],['To','to'],['Purpose','purpose'],['Status','status']], evidence.dataLineage.filter((row) => !q || JSON.stringify(row).toLowerCase().includes(q)));
+      table(el('gapTable'), [['Tool','name'],['Reason','reason'],['Action','action']], evidence.capabilityGaps.filter((row) => !q || JSON.stringify(row).toLowerCase().includes(q)));
+      table(el('endpointTable'), [['Namespace','namespace'],['Service','name'],['Type','type'],['Ready Endpoints','endpointReady'],['Ports','ports']], evidence.serviceEndpointIssues.filter((row) => !q || JSON.stringify(row).toLowerCase().includes(q)));
+      table(el('riskTable'), [['Severity','severity'],['Category','category'],['Layer','layer'],['Namespace','namespace'],['Name','name'],['Message','message']], evidence.riskEvents.filter((row) => !q || JSON.stringify(row).toLowerCase().includes(q)));
+    }
+    function boot() {
+      renderCards();
+      barChart(el('namespaceChart'), evidence.namespaceSummary.slice(0, 18), 'namespace', 'ready', null, '#0f9f9a');
+      stackedProbeChart();
+      barChart(el('restartChart'), evidence.restartHotspots.slice(0, 12).map((pod) => ({ name: pod.namespace + '/' + pod.name, restarts: pod.restarts })), 'name', 'restarts', null, '#d9822b');
+      barChart(el('marketChart'), evidence.jobMarketFit.map((row) => ({ capability: row.capability, score: row.score })), 'capability', 'score', 100, '#2e6bd7');
+      layerChart();
+      riskChart();
+      ringChart();
+      sparkPanel();
+      applyFilter();
+      setInterval(() => { el('clock').textContent = 'browser time ' + new Date().toLocaleString(); }, 1000);
+      el('filter').addEventListener('input', applyFilter);
+      document.querySelectorAll('.view-btn').forEach((button) => button.addEventListener('click', () => setView(button.dataset.targetView)));
+      const initialView = ['overview','risk','data','services','market'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'overview';
+      setView(initialView);
+    }
+    boot();
+  </script>
+</body>
+</html>

@@ -1,0 +1,1 @@
+{"items":[{"metadata":{"name":"hello-app","namespace":"ns-apps"},"spec":{"type":"ClusterIP","clusterIP":"10.43.0.2","ports":[{"port":80}]}},{"metadata":{"name":"elasticsearch","namespace":"default"},"spec":{"type":"ClusterIP","clusterIP":"None","ports":[]}}]}

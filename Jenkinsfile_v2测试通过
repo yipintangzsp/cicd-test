@@ -20,7 +20,7 @@ pipeline {
         HARBOR_URL     = '192.168.1.58:8081'
         HARBOR_PROJECT = 'devops'
         APP_NAME       = 'hello-app'
-
+        
         GIT_SHORT_HASH = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
         IMAGE_TAG      = "${params.BASE_VERSION}.${BUILD_NUMBER}-${GIT_SHORT_HASH}"
         FULL_IMAGE     = "${HARBOR_URL}/${HARBOR_PROJECT}/${APP_NAME}:${IMAGE_TAG}"
