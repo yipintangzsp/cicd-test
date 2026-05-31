@@ -37,8 +37,13 @@ properties([
 
 node {
     stage('Select GitHub Pipeline Version') {
-        checkout scm
-        def selected = (params.PIPELINE_VERSION ?: 'Jenkinsfile-epoch-v13').trim()
+        if (binding.variables.containsKey('scm')) {
+            checkout scm
+        } else {
+            echo 'GitHub workspace already prepared by the Jenkins wrapper.'
+        }
+        def rawSelected = (params.PIPELINE_VERSION ?: 'Jenkinsfile-epoch-v13').trim()
+        def selected = rawSelected == 'Jenkinsfile' ? 'Jenkinsfile-epoch-v13' : rawSelected
         if (!pipelineVersions.contains(selected)) {
             error "Unsupported PIPELINE_VERSION: ${selected}"
         }
