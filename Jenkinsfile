@@ -2,7 +2,6 @@
 
 def pipelineVersions = [
     'Jenkinsfile-epoch-v13',
-    'Jenkinsfile-expert-v13',
     'Jenkinsfile-expert-v12',
     'Jenkinsfile-expert-v11',
     'Jenkinsfile-expert-v10',
