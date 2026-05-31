@@ -7,8 +7,8 @@ V13 starts a new governance era while inheriting the V12 full-platform evidence 
 - Keep V12 full service and pod coverage.
 - Add non-destructive platform patrol evidence.
 - Add SLO/error-budget, capacity runway, backup inventory, restore dry-run, ownership map and release gate.
-- Publish the same Cloudflare-ready portal at `https://platform.heil.ccwu.cc/`.
-- Use `platform-era-v13-portal` as the primary Kubernetes portal service; keep `hello-app-v10-portal` only as the NodePort compatibility alias for the existing Cloudflare route.
+- Publish an independent V13 evidence portal, leaving the existing V12 Cloudflare route untouched unless promotion is explicitly enabled.
+- Use `platform-era-v13-portal` on NodePort `30089`; keep `hello-app-v10-portal` on NodePort `30087` for the existing V12 route.
 - Fail the plan-conformance gate if observability import, Kibana saved object import, Cloudflare evidence, V13 portal naming, or cloud-worker low-priority scheduling checks drift from the plan.
 
 ## Safety Contract

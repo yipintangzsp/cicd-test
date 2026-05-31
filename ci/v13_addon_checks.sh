@@ -429,7 +429,7 @@ NODE
     if [ "${V13_REQUIRE_CLOUDFLARE_PUBLICATION:-false}" = "true" ]; then
       curl -fsS --max-time 20 "https://${CLOUDFLARE_PUBLIC_HOSTNAME:-platform.heil.ccwu.cc}/" > reports/v13-cloudflare-live/platform.html
     else
-      curl -fsS --max-time 20 "http://192.168.1.58:${V13_PORTAL_NODEPORT:-30088}/" > reports/v13-cloudflare-live/platform.html
+      curl -fsS --max-time 20 "http://192.168.1.58:${V13_PORTAL_NODEPORT:-30089}/" > reports/v13-cloudflare-live/platform.html
       printf 'independent-nodeport; legacy Cloudflare route left untouched\n' > reports/v13-cloudflare-live/publication-mode.txt
     fi
     grep -q 'ZhangLab DevOps V13 Control Surface' reports/v13-cloudflare-live/platform.html
@@ -438,7 +438,7 @@ NODE
     if [ "${V13_REQUIRE_CLOUDFLARE_PUBLICATION:-false}" = "true" ]; then
       curl -fsS --max-time 20 "https://${CLOUDFLARE_PUBLIC_HOSTNAME:-platform.heil.ccwu.cc}/evidence.json" > reports/v13-cloudflare-live/evidence.json || true
     else
-      curl -fsS --max-time 20 "http://192.168.1.58:${V13_PORTAL_NODEPORT:-30088}/evidence.json" > reports/v13-cloudflare-live/evidence.json || true
+      curl -fsS --max-time 20 "http://192.168.1.58:${V13_PORTAL_NODEPORT:-30089}/evidence.json" > reports/v13-cloudflare-live/evidence.json || true
     fi
     if [ -s reports/v13-cloudflare-live/evidence.json ]; then node -e "const e=JSON.parse(require('fs').readFileSync('reports/v13-cloudflare-live/evidence.json','utf8')); if(!e.summary) process.exit(1); console.log(e.summary.pipelineVersion || e.summary.pipeline_version || 'v13')"; fi
     ;;

@@ -30,7 +30,7 @@ properties([
         booleanParam(name: 'DRY_RUN', defaultValue: false, description: 'Run real build/deploy path by default.'),
         booleanParam(name: 'RUN_UNIT_TESTS', defaultValue: true, description: 'Run unit tests.'),
         booleanParam(name: 'RUN_SMOKE_TEST', defaultValue: true, description: 'Run smoke checks.'),
-        string(name: 'V13_PORTAL_NODEPORT', defaultValue: '30088', description: '[v13] Independent portal NodePort.'),
+        string(name: 'V13_PORTAL_NODEPORT', defaultValue: '30089', description: '[v13] Independent portal NodePort; 30087 is V12 and 30088 is jkvideo.'),
         booleanParam(name: 'V13_REQUIRE_CLOUDFLARE_PUBLICATION', defaultValue: false, description: '[v13] Keep false unless Cloudflare is intentionally moved to V13.')
     ])
 ])
