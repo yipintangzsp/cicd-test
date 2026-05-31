@@ -555,126 +555,366 @@ const html = `<!doctype html>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ZhangLab DevOps V13 Control Surface</title>
   <style>
-    :root { color-scheme: dark; --ink:#ecf7ff; --muted:#9fb2c9; --line:rgba(145,180,220,.24); --bg:#08111e; --panel:rgba(12,25,43,.78); --panel2:rgba(18,37,62,.92); --cyan:#22d3ee; --amber:#f59e0b; --red:#ef4444; --blue:#60a5fa; --green:#34d399; --violet:#a78bfa; }
+    :root {
+      color-scheme: dark;
+      --bg0:#050816; --bg1:#07121f; --bg2:#0a1f2b; --ink:#eef8ff; --muted:#9fb2c9;
+      --line:rgba(158,192,231,.22); --panel:rgba(8,18,32,.70); --panel2:rgba(12,29,49,.88);
+      --cyan:#22d3ee; --green:#34d399; --amber:#f59e0b; --red:#fb7185; --blue:#60a5fa; --magenta:#f472b6; --lime:#a3e635;
+    }
     * { box-sizing:border-box; }
-    body { margin:0; font-family:"Avenir Next", "Segoe UI", -apple-system, sans-serif; background:radial-gradient(circle at 18% 5%,rgba(34,211,238,.20),transparent 30%),radial-gradient(circle at 82% 8%,rgba(167,139,250,.16),transparent 29%),linear-gradient(180deg,#08111e 0%,#0c1728 54%,#07101b 100%); color:var(--ink); min-height:100vh; }
-    body:before { content:""; position:fixed; inset:0; pointer-events:none; background:linear-gradient(rgba(255,255,255,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px); background-size:44px 44px; mask-image:linear-gradient(to bottom,black,transparent 80%); }
-    header { min-height:330px; padding:42px 36px 30px; color:white; display:grid; grid-template-columns:minmax(0,1.2fr) minmax(320px,.8fr); gap:24px; align-items:end; position:relative; overflow:hidden; border-bottom:1px solid var(--line); }
-    header:after { content:""; position:absolute; inset:auto -8% -42% 28%; height:260px; background:conic-gradient(from 120deg,var(--cyan),transparent,var(--violet),transparent,var(--green)); filter:blur(54px); opacity:.32; animation:pulse 6s ease-in-out infinite alternate; }
-    header h1 { margin:0; font-size:clamp(34px,5vw,72px); line-height:.96; letter-spacing:0; max-width:920px; }
-    header p { margin:18px 0 0; color:#c6d9ea; font-size:16px; }
-    .hero-meter { position:relative; z-index:1; border:1px solid var(--line); background:linear-gradient(145deg,rgba(12,25,43,.82),rgba(14,39,62,.58)); border-radius:8px; padding:22px; box-shadow:0 24px 80px rgba(0,0,0,.28); }
-    .hero-score { font-size:74px; font-weight:900; line-height:1; color:var(--green); text-shadow:0 0 24px rgba(52,211,153,.25); }
-    .hero-meter span { color:var(--muted); }
-    main { padding:24px 34px 36px; max-width:1680px; margin:0 auto; }
-    .toolbar { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:18px; }
-    .pill { border:1px solid var(--line); background:rgba(12,25,43,.72); border-radius:999px; padding:8px 12px; color:var(--muted); font-size:13px; backdrop-filter:blur(14px); }
-    .search { min-width:280px; flex:1; border:1px solid var(--line); border-radius:8px; padding:11px 13px; font:inherit; background:rgba(5,13,24,.76); color:var(--ink); outline:none; }
-    .search:focus { border-color:var(--cyan); box-shadow:0 0 0 3px rgba(34,211,238,.12); }
-    .viewbar { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; margin:0 0 18px; }
-    .view-btn { appearance:none; border:1px solid var(--line); background:linear-gradient(145deg,rgba(12,25,43,.78),rgba(27,45,72,.58)); color:var(--ink); border-radius:8px; padding:13px 12px; font:inherit; font-weight:800; cursor:pointer; text-align:left; position:relative; overflow:hidden; transition:transform .18s ease,border-color .18s ease,background .18s ease; }
-    .view-btn:after { content:""; position:absolute; inset:auto 10px 8px 10px; height:2px; background:linear-gradient(90deg,var(--cyan),var(--violet)); transform:scaleX(0); transform-origin:left; transition:transform .2s ease; }
-    .view-btn:hover { transform:translateY(-2px); border-color:rgba(34,211,238,.72); }
-    .view-btn.active { background:linear-gradient(145deg,rgba(34,211,238,.22),rgba(96,165,250,.16)); border-color:rgba(34,211,238,.78); box-shadow:0 0 32px rgba(34,211,238,.12); }
+    html { scroll-behavior:smooth; }
+    body {
+      margin:0; min-height:100vh; color:var(--ink); overflow-x:hidden;
+      font-family:"Avenir Next","Segoe UI",-apple-system,BlinkMacSystemFont,sans-serif;
+      background:
+        radial-gradient(circle at 12% -8%,rgba(34,211,238,.32),transparent 32%),
+        radial-gradient(circle at 85% 4%,rgba(244,114,182,.22),transparent 28%),
+        radial-gradient(circle at 46% 48%,rgba(52,211,153,.12),transparent 34%),
+        linear-gradient(135deg,var(--bg0),var(--bg1) 48%,var(--bg2));
+    }
+    body:before {
+      content:""; position:fixed; inset:0; pointer-events:none; z-index:-2;
+      background:
+        linear-gradient(rgba(255,255,255,.045) 1px,transparent 1px),
+        linear-gradient(90deg,rgba(255,255,255,.028) 1px,transparent 1px);
+      background-size:48px 48px; mask-image:linear-gradient(to bottom,#000 10%,transparent 88%);
+    }
+    body:after {
+      content:""; position:fixed; inset:-40% -18% auto auto; width:70vw; height:70vw; z-index:-2; pointer-events:none;
+      background:conic-gradient(from 45deg,rgba(34,211,238,.22),rgba(52,211,153,.08),rgba(245,158,11,.20),rgba(244,114,182,.16),rgba(34,211,238,.22));
+      filter:blur(70px); opacity:.62; animation:aurora 12s ease-in-out infinite alternate;
+    }
+    #ambientCanvas { position:fixed; inset:0; width:100%; height:100%; z-index:-1; pointer-events:none; opacity:.44; }
+    a { color:inherit; }
+    .topbar {
+      min-height:56px; padding:10px 30px; display:grid; grid-template-columns:auto minmax(0,1fr) auto; gap:18px; align-items:center;
+      border-bottom:1px solid rgba(158,192,231,.18); background:rgba(5,12,22,.68); backdrop-filter:blur(18px);
+      position:sticky; top:0; z-index:24;
+    }
+    .brand { display:flex; gap:10px; align-items:center; font-weight:950; font-size:18px; }
+    .brand-mark { width:30px; height:30px; border-radius:7px; display:grid; place-items:center; color:#04111f; background:linear-gradient(135deg,var(--cyan),var(--green)); box-shadow:0 0 24px rgba(34,211,238,.28); }
+    .live-tape { min-width:0; overflow:hidden; border-inline:1px solid rgba(255,255,255,.08); }
+    .live-track { display:flex; gap:28px; white-space:nowrap; width:max-content; animation:tape 26s linear infinite; color:#cfe5f7; font-size:12px; font-weight:800; }
+    .top-actions { display:flex; gap:8px; align-items:center; justify-content:flex-end; }
+    .top-actions .chip { min-height:32px; display:inline-flex; align-items:center; }
+    .shell { max-width:1780px; margin:0 auto; padding:26px 30px 42px; }
+    .hero {
+      min-height:420px; display:grid; grid-template-columns:minmax(0,1.06fr) minmax(360px,.94fr); gap:24px; align-items:stretch;
+      padding:26px 30px 10px; position:relative;
+    }
+    .hero-copy, .command-core {
+      border:1px solid var(--line); border-radius:8px; background:linear-gradient(145deg,rgba(8,18,32,.80),rgba(13,34,54,.55));
+      box-shadow:0 28px 90px rgba(0,0,0,.35); backdrop-filter:blur(22px);
+    }
+    .hero-copy { padding:30px; display:flex; flex-direction:column; justify-content:space-between; overflow:hidden; position:relative; }
+    .hero-copy:before {
+      content:""; position:absolute; inset:0; opacity:.45; pointer-events:none;
+      background:linear-gradient(120deg,transparent 0%,rgba(34,211,238,.18) 24%,transparent 42%,rgba(245,158,11,.14) 64%,transparent 82%);
+      transform:translateX(-60%); animation:sweep 8s linear infinite;
+    }
+    .signal-row { display:flex; gap:10px; flex-wrap:wrap; position:relative; z-index:1; }
+    .signal {
+      display:inline-flex; align-items:center; gap:8px; min-height:34px; padding:7px 11px; border-radius:999px;
+      color:#d8ebff; border:1px solid rgba(255,255,255,.13); background:rgba(3,10,18,.38); font-size:12px; font-weight:800;
+    }
+    .signal i { width:8px; height:8px; border-radius:99px; background:var(--green); box-shadow:0 0 16px currentColor; display:inline-block; }
+    h1 { position:relative; z-index:1; margin:40px 0 14px; max-width:980px; font-size:clamp(38px,6.4vw,92px); line-height:.92; letter-spacing:0; }
+    .hero-sub { position:relative; z-index:1; margin:0; color:#c8d9ea; max-width:980px; font-size:17px; line-height:1.65; }
+    .hero-actions { position:relative; z-index:1; display:flex; flex-wrap:wrap; gap:12px; margin-top:24px; }
+    .action {
+      appearance:none; border:1px solid var(--line); border-radius:8px; padding:12px 14px; color:var(--ink); cursor:pointer;
+      background:rgba(5,14,24,.68); font:inherit; font-weight:900; transition:transform .18s ease,border-color .18s ease,box-shadow .18s ease;
+    }
+    .action.primary { border-color:rgba(34,211,238,.72); background:linear-gradient(135deg,rgba(34,211,238,.24),rgba(52,211,153,.14)); box-shadow:0 0 28px rgba(34,211,238,.12); }
+    .action:hover { transform:translateY(-2px); border-color:rgba(245,158,11,.75); box-shadow:0 12px 38px rgba(0,0,0,.25); }
+    .command-core { padding:22px; display:grid; grid-template-columns:1fr 1fr; gap:14px; overflow:hidden; }
+    .health-orb {
+      grid-row:span 2; min-height:328px; display:grid; place-items:center; position:relative; border-radius:8px;
+      background:radial-gradient(circle at 50% 46%,rgba(34,211,238,.20),rgba(5,12,22,.10) 42%,rgba(5,12,22,.72));
+      border:1px solid rgba(255,255,255,.11);
+    }
+    .health-orb svg { width:min(92%,350px); min-height:300px; filter:drop-shadow(0 0 24px rgba(34,211,238,.18)); }
+    .health-center { position:absolute; text-align:center; }
+    .score { font-size:76px; line-height:1; font-weight:950; color:var(--green); text-shadow:0 0 26px rgba(52,211,153,.35); }
+    .score-label { color:var(--muted); font-size:13px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; }
+    .mini-stat {
+      min-height:156px; padding:16px; border-radius:8px; border:1px solid rgba(255,255,255,.12);
+      background:linear-gradient(160deg,rgba(12,30,52,.76),rgba(5,13,24,.62)); position:relative; overflow:hidden;
+    }
+    .mini-stat:after { content:""; position:absolute; left:14px; right:14px; bottom:12px; height:3px; border-radius:99px; background:linear-gradient(90deg,var(--cyan),var(--lime),var(--amber)); transform-origin:left; animation:grow .95s ease both; }
+    .mini-value { font-size:36px; line-height:1; font-weight:950; }
+    .mini-label { margin-top:8px; color:var(--muted); font-size:13px; }
+    .mini-spark { position:absolute; left:14px; right:14px; bottom:26px; height:42px; opacity:.7; }
+    .control-strip {
+      position:sticky; top:0; z-index:12; margin:8px 0 18px; padding:10px; border:1px solid var(--line); border-radius:8px;
+      background:rgba(5,13,24,.78); backdrop-filter:blur(22px); box-shadow:0 16px 44px rgba(0,0,0,.24);
+      display:grid; grid-template-columns:minmax(260px,1fr) auto; gap:12px; align-items:center;
+    }
+    .search {
+      width:100%; border:1px solid rgba(255,255,255,.13); border-radius:8px; padding:13px 14px; font:inherit; color:var(--ink);
+      background:rgba(3,9,18,.76); outline:none;
+    }
+    .search:focus { border-color:var(--cyan); box-shadow:0 0 0 3px rgba(34,211,238,.14); }
+    .chip-row { display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
+    .chip {
+      border:1px solid rgba(255,255,255,.13); background:rgba(13,30,50,.72); color:#d8ebff; border-radius:999px;
+      padding:8px 10px; font-size:12px; font-weight:800;
+    }
+    .viewbar { display:grid; grid-template-columns:repeat(6,minmax(120px,1fr)); gap:10px; margin-bottom:16px; }
+    .view-btn {
+      min-height:76px; appearance:none; text-align:left; border:1px solid var(--line); color:var(--ink); border-radius:8px;
+      padding:13px; background:linear-gradient(145deg,rgba(10,25,43,.82),rgba(14,39,62,.44)); cursor:pointer; font:inherit; font-weight:950;
+      position:relative; overflow:hidden; transition:transform .18s ease,border-color .18s ease,background .18s ease;
+    }
+    .view-btn:before { content:""; position:absolute; inset:0; opacity:0; background:radial-gradient(circle at 18% 12%,rgba(34,211,238,.30),transparent 42%); transition:opacity .2s ease; }
+    .view-btn:after { content:""; position:absolute; left:12px; right:12px; bottom:9px; height:3px; background:linear-gradient(90deg,var(--cyan),var(--green),var(--amber),var(--magenta)); border-radius:99px; transform:scaleX(0); transform-origin:left; transition:transform .2s ease; }
+    .view-btn:hover { transform:translateY(-2px); border-color:rgba(34,211,238,.68); }
+    .view-btn.active { background:linear-gradient(145deg,rgba(34,211,238,.22),rgba(245,158,11,.10),rgba(244,114,182,.12)); border-color:rgba(34,211,238,.82); }
+    .view-btn.active:before { opacity:1; }
     .view-btn.active:after { transform:scaleX(1); }
-    .view-btn small { display:block; margin-top:4px; color:var(--muted); font-weight:600; }
-    .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(185px,1fr)); gap:14px; margin-bottom:18px; }
-    .card, .panel { background:var(--panel); border:1px solid var(--line); border-radius:8px; box-shadow:0 18px 60px rgba(0,0,0,.22); backdrop-filter:blur(18px); }
-    .card { padding:16px; min-height:118px; position:relative; overflow:hidden; }
-    .card:after { content:""; position:absolute; inset:auto 12px 10px 12px; height:3px; border-radius:999px; background:linear-gradient(90deg,var(--cyan),var(--green),var(--amber)); transform-origin:left; animation:grow .9s ease both; }
-    .metric { font-size:34px; line-height:1; font-weight:900; }
-    .label { color:var(--muted); margin-top:8px; font-size:14px; }
+    .view-btn span, .view-btn small { position:relative; z-index:1; }
+    .view-btn small { display:block; margin-top:6px; color:var(--muted); font-weight:700; }
+    .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(174px,1fr)); gap:12px; margin-bottom:16px; }
+    .card, .panel {
+      border:1px solid var(--line); border-radius:8px; background:var(--panel); box-shadow:0 20px 64px rgba(0,0,0,.24); backdrop-filter:blur(18px);
+    }
+    .card { min-height:132px; padding:15px; position:relative; overflow:hidden; }
+    .card:before { content:""; position:absolute; inset:-30% auto auto -20%; width:120px; height:120px; border-radius:50%; background:var(--accent,var(--cyan)); opacity:.18; filter:blur(22px); }
+    .metric { position:relative; font-size:34px; line-height:1; font-weight:950; }
+    .label { position:relative; color:var(--muted); margin-top:8px; font-size:13px; line-height:1.35; }
+    .sparkline { position:absolute; left:12px; right:12px; bottom:12px; height:34px; opacity:.72; }
     .grid { display:grid; grid-template-columns:repeat(12,1fr); gap:14px; align-items:start; }
-    .panel { padding:16px; min-height:280px; }
+    .panel { min-height:288px; padding:16px; overflow:hidden; }
+    .panel-head { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; margin-bottom:10px; }
+    h2 { margin:0; font-size:17px; letter-spacing:0; }
+    .sub { color:var(--muted); font-size:12px; line-height:1.45; margin-top:4px; }
+    .panel-actions { display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end; }
+    .mini-btn { border:1px solid rgba(255,255,255,.13); background:rgba(3,10,18,.42); color:#d8ebff; border-radius:6px; padding:6px 8px; font:inherit; font-size:11px; font-weight:800; cursor:pointer; }
+    .mini-btn.active { border-color:var(--amber); color:#ffe0a6; background:rgba(245,158,11,.12); }
+    svg { width:100%; min-height:224px; display:block; }
+    .wide { grid-column:span 12; } .half { grid-column:span 6; } .third { grid-column:span 4; } .two-third { grid-column:span 8; }
     .view-panel { animation:panelIn .28s ease both; }
     .view-panel.is-hidden { display:none; }
-    .wide { grid-column:span 12; }
-    .half { grid-column:span 6; }
-    .third { grid-column:span 4; }
-    h2 { margin:0 0 12px; font-size:18px; letter-spacing:0; }
-    svg { width:100%; min-height:210px; display:block; }
-    table { width:100%; border-collapse:collapse; font-size:13px; }
-    th, td { padding:9px 10px; border-bottom:1px solid rgba(219,228,239,.12); text-align:left; vertical-align:top; }
-    th { background:rgba(96,165,250,.12); color:#d7e6f8; position:sticky; top:0; }
-    .table-wrap { max-height:430px; overflow:auto; border:1px solid var(--line); border-radius:8px; }
-    .ok { color:var(--green); font-weight:700; }
-    .warn { color:var(--amber); font-weight:700; }
-    .bad { color:var(--red); font-weight:700; }
-    .legend { display:flex; gap:12px; flex-wrap:wrap; color:var(--muted); font-size:12px; margin-top:8px; }
-    code { background:rgba(245,158,11,.14); color:#ffdc93; padding:2px 5px; border-radius:4px; }
-    @keyframes pulse { from { transform:scale(.96) rotate(0deg); } to { transform:scale(1.08) rotate(9deg); } }
+    table { width:100%; border-collapse:collapse; font-size:12px; }
+    th, td { padding:9px 10px; border-bottom:1px solid rgba(219,228,239,.11); text-align:left; vertical-align:top; }
+    th { color:#dcecff; background:rgba(96,165,250,.12); position:sticky; top:0; z-index:1; }
+    tbody tr { transition:background .14s ease; }
+    tbody tr:hover { background:rgba(34,211,238,.07); }
+    .table-wrap { max-height:460px; overflow:auto; border:1px solid rgba(255,255,255,.10); border-radius:8px; }
+    .flow-lane { min-height:310px; position:relative; }
+    .flow-node { position:absolute; width:128px; min-height:62px; padding:10px; border:1px solid rgba(255,255,255,.16); border-radius:8px; background:rgba(6,18,32,.78); box-shadow:0 0 32px rgba(34,211,238,.08); }
+    .flow-node strong { display:block; font-size:13px; }
+    .flow-node span { color:var(--muted); font-size:11px; }
+    .flow-line { position:absolute; height:2px; background:linear-gradient(90deg,var(--cyan),var(--green),var(--amber)); transform-origin:left; box-shadow:0 0 18px rgba(34,211,238,.35); animation:flowPulse 2.2s linear infinite; }
+    .ok { color:var(--green); font-weight:900; } .warn { color:var(--amber); font-weight:900; } .bad { color:var(--red); font-weight:900; }
+    .status-dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px; background:currentColor; box-shadow:0 0 12px currentColor; }
+    code { background:rgba(245,158,11,.13); color:#ffe0a6; padding:2px 5px; border-radius:4px; }
+    .toast {
+      position:fixed; right:18px; bottom:18px; z-index:30; max-width:min(420px,calc(100vw - 36px));
+      padding:12px 14px; border:1px solid rgba(34,211,238,.45); border-radius:8px; background:rgba(4,12,22,.88);
+      color:#dff7ff; box-shadow:0 18px 60px rgba(0,0,0,.34); opacity:0; transform:translateY(14px); transition:.22s ease;
+    }
+    .toast.show { opacity:1; transform:translateY(0); }
+    @keyframes aurora { from { transform:translate3d(0,0,0) rotate(0deg) scale(.92); } to { transform:translate3d(-8%,8%,0) rotate(18deg) scale(1.06); } }
+    @keyframes sweep { from { transform:translateX(-70%); } to { transform:translateX(90%); } }
+    @keyframes tape { from { transform:translateX(2%); } to { transform:translateX(-50%); } }
     @keyframes grow { from { transform:scaleX(0); } to { transform:scaleX(1); } }
-    @keyframes panelIn { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
-    @media (max-width: 980px) { header { grid-template-columns:1fr; min-height:360px; } header h1 { font-size:34px; } main { padding:18px; } .half,.third { grid-column:span 12; } }
+    @keyframes panelIn { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
+    @keyframes flowPulse { from { filter:hue-rotate(0deg); opacity:.45; } 50% { opacity:1; } to { filter:hue-rotate(80deg); opacity:.45; } }
+    @media (prefers-reduced-motion: reduce) { *, *:before, *:after { animation:none !important; transition:none !important; } }
+    @media (max-width: 1180px) { .hero { grid-template-columns:1fr; } .viewbar { grid-template-columns:repeat(3,1fr); } .half,.third,.two-third { grid-column:span 12; } .command-core { grid-template-columns:1fr; } .health-orb { grid-row:auto; } }
+    @media (max-width: 720px) { .topbar { grid-template-columns:1fr; padding:10px 14px; } .top-actions { justify-content:flex-start; } .shell,.hero { padding-left:14px; padding-right:14px; } h1 { font-size:40px; } .control-strip { grid-template-columns:1fr; } .chip-row { justify-content:flex-start; } .viewbar { grid-template-columns:1fr 1fr; } .cards { grid-template-columns:1fr 1fr; } }
   </style>
 </head>
 <body>
-  <header>
-    <div>
-      <h1>ZhangLab DevOps V13 Control Surface</h1>
-      <p>Build #${build} · ${semver} · commit ${commit} · Spark-aware full-platform evidence · ${publicHost}</p>
+  <canvas id="ambientCanvas" aria-hidden="true"></canvas>
+  <div class="topbar">
+    <div class="brand"><span class="brand-mark">Z</span><span>ZhangLab</span><span class="signal">V13</span></div>
+    <div class="live-tape" aria-label="Live platform status">
+      <div class="live-track">
+        <span>LIVE · build #${build} · ${semver}</span>
+        <span>Platform Health ${platformHealthScore}</span>
+        <span>Pods ${summary.podReady}/${summary.podTotal}</span>
+        <span>Services ${summary.serviceEndpointReady}/${summary.serviceTotal}</span>
+        <span>Probes ${summary.serviceProbeOk}/${summary.serviceProbeTotal}</span>
+        <span>Spark ${summary.sparkPodsReady}/${summary.sparkPods}</span>
+        <span>Risk Events ${summary.riskEventTotal}</span>
+        <span>Coverage ${summary.podCoverageRatio}%</span>
+        <span>LIVE · build #${build} · ${semver}</span>
+        <span>Platform Health ${platformHealthScore}</span>
+        <span>Pods ${summary.podReady}/${summary.podTotal}</span>
+        <span>Services ${summary.serviceEndpointReady}/${summary.serviceTotal}</span>
+      </div>
     </div>
-    <div class="hero-meter">
-      <span>Composite platform health</span>
-      <div class="hero-score">${platformHealthScore}</div>
-      <span>${summary.serviceProbeOk}/${summary.serviceProbeTotal} probes · ${summary.podCoverageRecordTotal}/${summary.podCoverageLiveTotal} covered pods · ${summary.riskEventTotal} risk events</span>
+    <div class="top-actions"><span class="chip">Asia/Shanghai</span><span class="chip">refresh 60s</span></div>
+  </div>
+  <section class="hero">
+    <div class="hero-copy">
+      <div class="signal-row">
+        <span class="signal"><i></i>V13 new era</span>
+        <span class="signal"><i style="background:var(--cyan)"></i>auto refresh 60s</span>
+        <span class="signal"><i style="background:var(--amber)"></i>Spark aware</span>
+        <span class="signal"><i style="background:var(--magenta)"></i>observability ready</span>
+      </div>
+      <div>
+        <h1>ZhangLab V13 Command Center</h1>
+        <p class="hero-sub">Build #${build} · ${semver} · commit ${commit} · full-platform evidence cockpit. 这版不再把所有数据平铺出来，而是按健康、风险、数据链路、服务矩阵和招聘能力覆盖分层展示。</p>
+        <div class="hero-actions">
+          <button class="action primary" data-jump-view="overview">进入总览</button>
+          <button class="action" data-jump-view="risk">查看风险</button>
+          <button class="action" data-jump-view="data">数据链路</button>
+          <button class="action" id="copyEvidence">复制证据地址</button>
+        </div>
+      </div>
+      <div class="signal-row">
+        <span class="signal">public <code>https://${publicHost}/</code></span>
+        <span class="signal">internal <code>http://192.168.1.58:${portalNodePort}/</code></span>
+      </div>
     </div>
-  </header>
-  <main>
-    <div class="toolbar">
-      <span class="pill">public <code>https://${publicHost}/</code></span>
-      <span class="pill">internal <code>http://192.168.1.58:${portalNodePort}/</code></span>
-      <span class="pill" id="clock">refreshing</span>
-      <input class="search" id="filter" placeholder="Filter services, pods, namespaces, Spark components">
+    <div class="command-core">
+      <div class="health-orb">
+        <svg id="healthOrb" aria-label="Platform health core"></svg>
+        <div class="health-center">
+          <div class="score">${platformHealthScore}</div>
+          <div class="score-label">platform health</div>
+        </div>
+      </div>
+      <div class="mini-stat">
+        <div class="mini-value">${summary.serviceProbeOk}/${summary.serviceProbeTotal}</div>
+        <div class="mini-label">service probes ok</div>
+        <svg class="mini-spark" id="heroProbeSpark"></svg>
+      </div>
+      <div class="mini-stat">
+        <div class="mini-value">${summary.podCoverageRecordTotal}/${summary.podCoverageLiveTotal}</div>
+        <div class="mini-label">pods covered by evidence</div>
+        <svg class="mini-spark" id="heroCoverageSpark"></svg>
+      </div>
+    </div>
+  </section>
+  <main class="shell">
+    <div class="control-strip">
+      <input class="search" id="filter" placeholder="搜索 service / pod / namespace / Spark / risk / image">
+      <div class="chip-row">
+        <span class="chip" id="clock">browser time syncing</span>
+        <span class="chip" id="syncStatus">evidence loaded</span>
+        <span class="chip">job ${job}</span>
+        <span class="chip">nodePort ${portalNodePort}</span>
+      </div>
     </div>
     <nav class="viewbar" aria-label="Platform views">
-      <button class="view-btn active" data-target-view="overview">Command<small>健康、层级、探针</small></button>
-      <button class="view-btn" data-target-view="risk">Risk<small>风险热力、重启、端点</small></button>
-      <button class="view-btn" data-target-view="data">Data Flow<small>Spark、Kafka、Flink、BI</small></button>
-      <button class="view-btn" data-target-view="services">Services<small>服务矩阵、Pod 明细</small></button>
-      <button class="view-btn" data-target-view="market">Fit<small>招聘能力、工具缺口</small></button>
+      <button class="view-btn active" data-target-view="overview"><span>Overview</span><small>健康核心、层级雷达、探针</small></button>
+      <button class="view-btn" data-target-view="risk"><span>Risk</span><small>热力、重启、端点、故障</small></button>
+      <button class="view-btn" data-target-view="data"><span>Data Flow</span><small>Spark、Kafka、Flink、MinIO</small></button>
+      <button class="view-btn" data-target-view="services"><span>Services</span><small>服务矩阵、Pod 明细</small></button>
+      <button class="view-btn" data-target-view="market"><span>Market Fit</span><small>招聘能力、工具覆盖</small></button>
+      <button class="view-btn" data-target-view="evidence"><span>Evidence</span><small>原始证据、审计线索</small></button>
     </nav>
     <section class="cards" id="cards"></section>
     <section class="grid">
-      <div class="panel half view-panel" data-view="overview data"><h2>Layer Health Radar</h2><svg id="layerChart"></svg><div class="legend">Cluster, DevOps, data, observability and app layer health in one view.</div></div>
-      <div class="panel half view-panel" data-view="risk overview"><h2>Risk Event Heat</h2><svg id="riskChart"></svg><div class="legend">Risk severity from failed probes, endpoint gaps, restarts and not-ready pods.</div></div>
-      <div class="panel half view-panel" data-view="overview services"><h2>Namespace Readiness</h2><svg id="namespaceChart"></svg><div class="legend">Pod readiness and restart load by namespace.</div></div>
-      <div class="panel half view-panel" data-view="overview services"><h2>Probe Group Status</h2><svg id="probeChart"></svg><div class="legend">HTTP/DNS/service checks grouped by platform layer.</div></div>
-      <div class="panel third view-panel" data-view="data overview"><h2>Spark Components</h2><div id="sparkPanel"></div></div>
-      <div class="panel third view-panel" data-view="risk services"><h2>Restart Hotspots</h2><svg id="restartChart"></svg></div>
-      <div class="panel third view-panel" data-view="overview"><h2>Coverage Rings</h2><svg id="ringChart"></svg></div>
-      <div class="panel half view-panel" data-view="market data"><h2>Recruitment Capability Fit</h2><svg id="marketChart"></svg><div class="legend">High-frequency DevOps/SRE/data-platform requirements mapped to installed services.</div></div>
-      <div class="panel half view-panel" data-view="data"><h2>Data Lineage</h2><div class="table-wrap"><table id="lineageTable"></table></div></div>
-      <div class="panel half view-panel" data-view="market"><h2>Capability Gaps</h2><div class="table-wrap"><table id="gapTable"></table></div></div>
-      <div class="panel half view-panel" data-view="risk services"><h2>No Endpoint Watchlist</h2><div class="table-wrap"><table id="endpointTable"></table></div></div>
-      <div class="panel wide view-panel" data-view="risk"><h2>Risk Event Ledger</h2><div class="table-wrap"><table id="riskTable"></table></div></div>
-      <div class="panel wide view-panel" data-view="services"><h2>Service Probe Matrix</h2><div class="table-wrap"><table id="probeTable"></table></div></div>
-      <div class="panel wide view-panel" data-view="services"><h2>Pod Evidence Matrix</h2><div class="table-wrap"><table id="podTable"></table></div></div>
+      <div class="panel half view-panel" data-view="overview data">
+        <div class="panel-head"><div><h2>Layer Health Radar</h2><div class="sub">平台按 cluster、DevOps、data、observability、application 分层评分。</div></div><div class="panel-actions"><button class="mini-btn active">radar</button></div></div>
+        <svg id="layerChart"></svg>
+      </div>
+      <div class="panel half view-panel" data-view="overview risk">
+        <div class="panel-head"><div><h2>Risk Event Heat</h2><div class="sub">风险块越亮，越需要优先查看。</div></div><div class="panel-actions"><button class="mini-btn active" data-risk-mode="all">all</button><button class="mini-btn" data-risk-mode="critical">critical</button></div></div>
+        <svg id="riskChart"></svg>
+      </div>
+      <div class="panel half view-panel" data-view="overview services">
+        <div class="panel-head"><div><h2>Namespace Readiness</h2><div class="sub">命名空间 Pod 就绪与重启负载。</div></div></div>
+        <svg id="namespaceChart"></svg>
+      </div>
+      <div class="panel half view-panel" data-view="overview services">
+        <div class="panel-head"><div><h2>Probe Group Status</h2><div class="sub">服务探针按组展示成功和失败。</div></div></div>
+        <svg id="probeChart"></svg>
+      </div>
+      <div class="panel two-third view-panel" data-view="data overview">
+        <div class="panel-head"><div><h2>Data Lineage Live Map</h2><div class="sub">Jenkins 日志、Kafka、Flink、Spark、MinIO、Trino、Superset、Kibana/Grafana 的链路感知视图。</div></div></div>
+        <div class="flow-lane" id="lineageFlow"></div>
+      </div>
+      <div class="panel third view-panel" data-view="data overview">
+        <div class="panel-head"><div><h2>Spark Components</h2><div class="sub">Spark operator、webhook、pod、probe 证据。</div></div></div>
+        <div id="sparkPanel"></div>
+      </div>
+      <div class="panel third view-panel" data-view="risk services"><div class="panel-head"><div><h2>Restart Hotspots</h2><div class="sub">重启次数 Top 组件。</div></div></div><svg id="restartChart"></svg></div>
+      <div class="panel third view-panel" data-view="overview"><div class="panel-head"><div><h2>Coverage Rings</h2><div class="sub">覆盖、Pod、Service、Spark 核心比例。</div></div></div><svg id="ringChart"></svg></div>
+      <div class="panel third view-panel" data-view="risk"><div class="panel-head"><div><h2>Risk Timeline</h2><div class="sub">按严重度生成的处理队列。</div></div></div><svg id="timelineChart"></svg></div>
+      <div class="panel half view-panel" data-view="market data"><div class="panel-head"><div><h2>Recruitment Capability Fit</h2><div class="sub">高频 DevOps/SRE/data-platform 能力与平台覆盖匹配度。</div></div></div><svg id="marketChart"></svg></div>
+      <div class="panel half view-panel" data-view="data evidence"><div class="panel-head"><div><h2>Data Lineage Ledger</h2><div class="sub">链路目的和当前覆盖状态。</div></div></div><div class="table-wrap"><table id="lineageTable"></table></div></div>
+      <div class="panel half view-panel" data-view="market evidence"><div class="panel-head"><div><h2>Capability Gaps</h2><div class="sub">只保留必要工具，避免冗余安装。</div></div></div><div class="table-wrap"><table id="gapTable"></table></div></div>
+      <div class="panel half view-panel" data-view="risk services"><div class="panel-head"><div><h2>No Endpoint Watchlist</h2><div class="sub">没有 ready endpoint 的服务。</div></div></div><div class="table-wrap"><table id="endpointTable"></table></div></div>
+      <div class="panel wide view-panel" data-view="risk evidence"><div class="panel-head"><div><h2>Risk Event Ledger</h2><div class="sub">Pod、探针、端点和重启风险清单。</div></div></div><div class="table-wrap"><table id="riskTable"></table></div></div>
+      <div class="panel wide view-panel" data-view="services evidence"><div class="panel-head"><div><h2>Service Probe Matrix</h2><div class="sub">Jenkins 采集的所有服务探针结果。</div></div></div><div class="table-wrap"><table id="probeTable"></table></div></div>
+      <div class="panel wide view-panel" data-view="services evidence"><div class="panel-head"><div><h2>Pod Evidence Matrix</h2><div class="sub">全 Pod 覆盖证据，包含镜像、节点、重启和覆盖状态。</div></div></div><div class="table-wrap"><table id="podTable"></table></div></div>
     </section>
   </main>
+  <div class="toast" id="toast"></div>
   <script id="evidence-data" type="application/json">${evidenceJson}</script>
   <script>
-    const evidence = JSON.parse(document.getElementById('evidence-data').textContent);
+    let evidence = JSON.parse(document.getElementById('evidence-data').textContent);
+    let riskMode = 'all';
     const fmt = new Intl.NumberFormat('en-US');
     const el = (id) => document.getElementById(id);
     const esc = (value) => String(value == null ? '' : value).replace(/[&<>"]/g, (ch) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]));
     const ratio = (a,b) => b ? Math.round(a * 100 / b) : 0;
+    const colors = ['#22d3ee','#34d399','#f59e0b','#f472b6','#60a5fa','#a3e635','#fb7185'];
+    function toast(message) {
+      const node = el('toast');
+      node.textContent = message;
+      node.classList.add('show');
+      setTimeout(() => node.classList.remove('show'), 2600);
+    }
+    function clsStatus(value) {
+      if (value === true || value === 'ok' || value === 'covered' || value === 'READY' || value === 'SUCCESS') return 'ok';
+      if (value === false || value === 'failed' || value === 'FAILURE' || value === 'NOT_READY') return 'bad';
+      return 'warn';
+    }
+    function sparkPath(values, width, height) {
+      const max = Math.max(1, ...values);
+      return values.map((value, index) => {
+        const x = Math.round(index * width / Math.max(1, values.length - 1));
+        const y = Math.round(height - (value / max) * (height - 4) - 2);
+        return (index ? 'L' : 'M') + x + ' ' + y;
+      }).join(' ');
+    }
+    function renderMiniSpark(id, values, color) {
+      const node = el(id);
+      if (!node) return;
+      node.setAttribute('viewBox', '0 0 180 42');
+      node.innerHTML = '<path d="' + sparkPath(values, 180, 42) + '" fill="none" stroke="' + color + '" stroke-width="3" stroke-linecap="round"><animate attributeName="stroke-dasharray" from="0 300" to="300 0" dur="1s" fill="freeze"/></path>';
+    }
+    function healthOrb() {
+      const s = evidence.summary;
+      const score = Number(s.platformHealthScore || 0);
+      const dash = Math.max(0, Math.min(100, score)) * 7.54;
+      const node = el('healthOrb');
+      node.setAttribute('viewBox', '0 0 360 360');
+      const orbitRows = (evidence.layerSummary || []).slice(0, 6);
+      const orbit = orbitRows.map((row, index) => {
+        const angle = -90 + index * 360 / Math.max(1, orbitRows.length);
+        const rad = angle * Math.PI / 180;
+        const x = 180 + Math.cos(rad) * 132;
+        const y = 180 + Math.sin(rad) * 132;
+        const c = row.healthScore >= 90 ? '#34d399' : row.healthScore >= 75 ? '#f59e0b' : '#fb7185';
+        return '<circle cx="' + x + '" cy="' + y + '" r="8" fill="' + c + '"><animate attributeName="r" values="6;10;6" dur="' + (2 + index * .2) + 's" repeatCount="indefinite"/></circle><text x="' + x + '" y="' + (y + 24) + '" text-anchor="middle" fill="#9fb2c9" font-size="10">' + esc(row.layer) + '</text>';
+      }).join('');
+      node.innerHTML = '<defs><linearGradient id="healthGrad" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#22d3ee"/><stop offset=".45" stop-color="#34d399"/><stop offset=".72" stop-color="#f59e0b"/><stop offset="1" stop-color="#f472b6"/></linearGradient></defs><circle cx="180" cy="180" r="120" fill="none" stroke="rgba(255,255,255,.11)" stroke-width="18"/><circle cx="180" cy="180" r="120" fill="none" stroke="url(#healthGrad)" stroke-width="18" stroke-linecap="round" stroke-dasharray="' + dash + ' 754" transform="rotate(-90 180 180)"><animate attributeName="stroke-dasharray" from="0 754" to="' + dash + ' 754" dur="1.2s" fill="freeze"/></circle><circle cx="180" cy="180" r="86" fill="none" stroke="rgba(34,211,238,.22)" stroke-width="1"/><circle cx="180" cy="180" r="150" fill="none" stroke="rgba(255,255,255,.08)" stroke-dasharray="4 10"/>' + orbit;
+    }
     function renderCards() {
       const s = evidence.summary;
       const cards = [
-        [s.platformHealthScore, 'Platform health score'],
-        [s.podCoverageRecordTotal + '/' + s.podCoverageLiveTotal, 'Pods covered by evidence'],
-        [s.podCoverageRatio + '%', 'Pod coverage ratio'],
-        [s.podReady + '/' + s.podTotal, 'Pods ready'],
-        [s.serviceEndpointReady + '/' + s.serviceTotal, 'Services with endpoints'],
-        [s.workloadReady + '/' + s.workloadTotal, 'Workloads ready'],
-        [s.serviceProbeOk + '/' + s.serviceProbeTotal, 'Service probes OK'],
-        [s.sparkPodsReady + '/' + s.sparkPods, 'Spark pods ready'],
-        [s.nodeReady + '/' + s.nodeTotal, 'Nodes ready'],
-        [s.riskEventTotal, 'Risk events tracked'],
-        [fmt.format(s.restartTotal), 'Total restarts observed'],
+        [s.platformHealthScore, 'Platform health', '#34d399', [40,58,72,86,s.platformHealthScore]],
+        [s.podCoverageRecordTotal + '/' + s.podCoverageLiveTotal, 'Pods covered', '#22d3ee', [20,42,65,80,s.podCoverageRatio]],
+        [s.podCoverageRatio + '%', 'Coverage ratio', '#a3e635', [30,50,70,90,s.podCoverageRatio]],
+        [s.podReady + '/' + s.podTotal, 'Pods ready', '#60a5fa', [s.podReady, s.podTotal, s.podReady]],
+        [s.serviceEndpointReady + '/' + s.serviceTotal, 'Services ready', '#f59e0b', [s.serviceEndpointReady, s.serviceTotal, s.serviceEndpointReady]],
+        [s.workloadReady + '/' + s.workloadTotal, 'Workloads ready', '#f472b6', [s.workloadReady, s.workloadTotal, s.workloadReady]],
+        [s.serviceProbeOk + '/' + s.serviceProbeTotal, 'Probes OK', '#34d399', [s.serviceProbeOk, s.serviceProbeTotal, s.serviceProbeOk]],
+        [s.sparkPodsReady + '/' + s.sparkPods, 'Spark ready', '#22d3ee', [s.sparkPodsReady, s.sparkPods || 1, s.sparkPodsReady]],
+        [s.nodeReady + '/' + s.nodeTotal, 'Nodes ready', '#a3e635', [s.nodeReady, s.nodeTotal, s.nodeReady]],
+        [s.riskEventTotal, 'Risk events', '#fb7185', [1,3,6,s.riskEventTotal || 1]],
+        [fmt.format(s.restartTotal), 'Total restarts', '#f59e0b', [1,2,4,Math.max(1,s.restartTotal)]],
       ];
-      el('cards').innerHTML = cards.map((c) => '<div class="card"><div class="metric">' + esc(c[0]) + '</div><div class="label">' + esc(c[1]) + '</div></div>').join('');
+      el('cards').innerHTML = cards.map((c, index) => '<div class="card" style="--accent:' + c[2] + '"><div class="metric">' + esc(c[0]) + '</div><div class="label">' + esc(c[1]) + '</div><svg class="sparkline" viewBox="0 0 180 34"><path d="' + sparkPath(c[3], 180, 34) + '" fill="none" stroke="' + c[2] + '" stroke-width="3" stroke-linecap="round"><animate attributeName="stroke-dasharray" from="0 300" to="300 0" dur="' + (0.7 + index * .05) + 's" fill="freeze"/></path></svg></div>').join('');
     }
     function barChart(node, rows, labelKey, valueKey, maxValue, color) {
       const width = 860, rowH = 28, top = 16, left = 190, height = Math.max(220, top + rows.length * rowH + 20);
@@ -683,7 +923,8 @@ const html = `<!doctype html>
         const y = top + index * rowH;
         const value = Number(row[valueKey] || 0);
         const w = Math.round((width - left - 30) * value / max);
-        return '<text x="0" y="' + (y + 17) + '" fill="#c6d9ea" font-size="12">' + esc(row[labelKey]) + '</text><rect x="' + left + '" y="' + (y + 4) + '" width="' + w + '" height="16" rx="4" fill="' + color + '"><animate attributeName="width" from="0" to="' + w + '" dur=".7s" fill="freeze"/></rect><text x="' + (left + w + 8) + '" y="' + (y + 17) + '" fill="#9fb2c9" font-size="12">' + value + '</text>';
+        const c = row.color || colors[index % colors.length] || color;
+        return '<text x="0" y="' + (y + 17) + '" fill="#c6d9ea" font-size="12">' + esc(row[labelKey]) + '</text><rect x="' + left + '" y="' + (y + 4) + '" width="' + (width - left - 30) + '" height="16" rx="4" fill="rgba(255,255,255,.07)"></rect><rect x="' + left + '" y="' + (y + 4) + '" width="' + w + '" height="16" rx="4" fill="' + c + '"><animate attributeName="width" from="0" to="' + w + '" dur=".7s" fill="freeze"/></rect><text x="' + (left + w + 8) + '" y="' + (y + 17) + '" fill="#9fb2c9" font-size="12">' + value + '</text>';
       }).join('');
       node.setAttribute('viewBox', '0 0 ' + width + ' ' + height);
       node.innerHTML = body;
@@ -711,7 +952,7 @@ const html = `<!doctype html>
       el('ringChart').setAttribute('viewBox', '0 0 520 240');
       el('ringChart').innerHTML = rings.map((r, i) => {
         const x = 65 + i * 130, pct = ratio(r[1], r[2]), dash = pct * 2.64;
-        return '<circle cx="' + x + '" cy="92" r="42" fill="none" stroke="rgba(219,228,239,.16)" stroke-width="14"></circle><circle cx="' + x + '" cy="92" r="42" fill="none" stroke="' + r[3] + '" stroke-width="14" stroke-dasharray="' + dash + ' 264" transform="rotate(-90 ' + x + ' 92)"></circle><text x="' + x + '" y="98" text-anchor="middle" font-size="20" font-weight="800" fill="#ecf7ff">' + pct + '%</text><text x="' + x + '" y="158" text-anchor="middle" font-size="13" fill="#9fb2c9">' + r[0] + '</text>';
+        return '<circle cx="' + x + '" cy="92" r="42" fill="none" stroke="rgba(219,228,239,.16)" stroke-width="14"></circle><circle cx="' + x + '" cy="92" r="42" fill="none" stroke="' + r[3] + '" stroke-width="14" stroke-dasharray="' + dash + ' 264" transform="rotate(-90 ' + x + ' 92)"><animate attributeName="stroke-dasharray" from="0 264" to="' + dash + ' 264" dur=".9s" fill="freeze"/></circle><text x="' + x + '" y="98" text-anchor="middle" font-size="20" font-weight="900" fill="#ecf7ff">' + pct + '%</text><text x="' + x + '" y="158" text-anchor="middle" font-size="13" fill="#9fb2c9">' + r[0] + '</text>';
       }).join('');
     }
     function layerChart() {
@@ -729,26 +970,65 @@ const html = `<!doctype html>
         points.map((p) => '<circle cx="' + p.x + '" cy="' + p.y + '" r="5" fill="#34d399"></circle><text x="' + p.lx + '" y="' + p.ly + '" text-anchor="middle" fill="#c6d9ea" font-size="11">' + esc(p.row.layer) + ' ' + p.row.healthScore + '</text>').join('');
     }
     function riskChart() {
-      const rows = evidence.riskEvents.slice(0, 16);
+      const rows = (riskMode === 'critical' ? evidence.riskEvents.filter((risk) => risk.severity >= 85) : evidence.riskEvents).slice(0, 18);
       const width = 860, cellW = 92, cellH = 42;
-      el('riskChart').setAttribute('viewBox', '0 0 ' + width + ' 230');
+      el('riskChart').setAttribute('viewBox', '0 0 ' + width + ' 250');
       el('riskChart').innerHTML = rows.map((risk, i) => {
-        const x = (i % 8) * (cellW + 10), y = Math.floor(i / 8) * (cellH + 28) + 20;
+        const x = (i % 9) * (cellW + 3), y = Math.floor(i / 9) * (cellH + 38) + 20;
         const color = risk.severity >= 85 ? '#ef4444' : risk.severity >= 70 ? '#f59e0b' : '#60a5fa';
-        return '<rect x="' + x + '" y="' + y + '" width="' + cellW + '" height="' + cellH + '" rx="6" fill="' + color + '" opacity=".86"></rect><text x="' + (x + 8) + '" y="' + (y + 17) + '" fill="#06101d" font-size="11" font-weight="800">' + risk.severity + '</text><text x="' + (x + 8) + '" y="' + (y + 32) + '" fill="#06101d" font-size="9">' + esc(risk.category.slice(0,12)) + '</text><text x="' + x + '" y="' + (y + cellH + 15) + '" fill="#9fb2c9" font-size="9">' + esc((risk.namespace + '/' + risk.name).slice(0,18)) + '</text>';
+        return '<rect x="' + x + '" y="' + y + '" width="' + cellW + '" height="' + cellH + '" rx="6" fill="' + color + '" opacity=".86"><animate attributeName="opacity" values=".55;.95;.70" dur="' + (1.8 + i * .08) + 's" repeatCount="indefinite"/></rect><text x="' + (x + 8) + '" y="' + (y + 17) + '" fill="#06101d" font-size="11" font-weight="900">' + risk.severity + '</text><text x="' + (x + 8) + '" y="' + (y + 32) + '" fill="#06101d" font-size="9">' + esc(risk.category.slice(0,12)) + '</text><text x="' + x + '" y="' + (y + cellH + 15) + '" fill="#9fb2c9" font-size="9">' + esc((risk.namespace + '/' + risk.name).slice(0,18)) + '</text>';
       }).join('') || '<text x="20" y="80" fill="#34d399" font-size="20">No active risk events</text>';
+    }
+    function timelineChart() {
+      const rows = evidence.riskEvents.slice(0, 8);
+      const width = 520, height = 260;
+      el('timelineChart').setAttribute('viewBox', '0 0 ' + width + ' ' + height);
+      el('timelineChart').innerHTML = rows.map((risk, index) => {
+        const y = 26 + index * 28;
+        const color = risk.severity >= 85 ? '#fb7185' : risk.severity >= 70 ? '#f59e0b' : '#60a5fa';
+        return '<circle cx="22" cy="' + y + '" r="7" fill="' + color + '"></circle><line x1="22" y1="' + (y + 9) + '" x2="22" y2="' + (y + 24) + '" stroke="rgba(255,255,255,.18)"></line><text x="42" y="' + (y + 5) + '" fill="#eef8ff" font-size="12" font-weight="800">' + esc(risk.category) + '</text><text x="42" y="' + (y + 20) + '" fill="#9fb2c9" font-size="10">' + esc((risk.namespace || '') + '/' + (risk.name || '')) + '</text><text x="456" y="' + (y + 9) + '" fill="' + color + '" font-size="12" font-weight="900">' + risk.severity + '</text>';
+      }).join('') || '<text x="20" y="80" fill="#34d399" font-size="18">Risk queue is empty</text>';
+    }
+    function lineageFlow() {
+      const rows = evidence.dataLineage.slice(0, 9);
+      const host = el('lineageFlow');
+      const width = host.clientWidth || 760;
+      const columns = Math.min(3, Math.max(1, Math.floor(width / 230)));
+      const nodes = rows.map((row, index) => {
+        const col = index % columns;
+        const lane = Math.floor(index / columns);
+        const x = 4 + col * Math.max(180, (width - 40) / columns);
+        const y = 10 + lane * 92;
+        return { row, x, y, w: 150, h: 66 };
+      });
+      const lines = nodes.slice(0, -1).map((node, index) => {
+        const next = nodes[index + 1];
+        const x1 = node.x + node.w;
+        const y1 = node.y + 32;
+        const x2 = next.x;
+        const y2 = next.y + 32;
+        const len = Math.max(36, Math.hypot(x2 - x1, y2 - y1));
+        const angle = Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI;
+        return '<div class="flow-line" style="left:' + x1 + 'px;top:' + y1 + 'px;width:' + len + 'px;transform:rotate(' + angle + 'deg)"></div>';
+      }).join('');
+      const boxes = nodes.map((node, index) => '<div class="flow-node" style="left:' + node.x + 'px;top:' + node.y + 'px;border-color:' + colors[index % colors.length] + '"><strong>' + esc(node.row.from) + ' → ' + esc(node.row.to) + '</strong><span>' + esc(node.row.purpose) + '</span><br><span class="' + clsStatus(node.row.status) + '"><span class="status-dot"></span>' + esc(node.row.status) + '</span></div>').join('');
+      host.innerHTML = lines + boxes;
     }
     function sparkPanel() {
       const pods = evidence.spark.pods;
       const services = evidence.spark.services;
       const probes = evidence.spark.probes;
-      const podRows = pods.map((pod) => '<tr><td>' + esc(pod.namespace) + '</td><td>' + esc(pod.name) + '</td><td class="' + (pod.ready ? 'ok' : 'bad') + '">' + (pod.ready ? 'READY' : 'CHECK') + '</td><td>' + pod.restarts + '</td></tr>').join('');
-      const serviceRows = services.map((svc) => '<tr><td>' + esc(svc.namespace) + '</td><td>' + esc(svc.name) + '</td><td>' + svc.endpointReady + '/' + svc.endpointTotal + '</td><td>' + esc(svc.ports) + '</td></tr>').join('');
-      const probeRows = probes.map((probe) => '<tr><td>' + esc(probe.group) + '</td><td>' + esc(probe.name) + '</td><td class="' + (probe.status === 'ok' ? 'ok' : 'bad') + '">' + esc(probe.status) + '</td></tr>').join('');
-      el('sparkPanel').innerHTML = '<div class="label">Spark operator, webhook, service endpoints, and probe evidence.</div><div class="table-wrap" style="max-height:325px"><table><thead><tr><th>Scope</th><th>Name</th><th>Status</th><th>Extra</th></tr></thead><tbody>' + podRows + serviceRows + probeRows + '</tbody></table></div>';
+      const podRows = pods.map((pod) => '<tr><td>' + esc(pod.namespace) + '</td><td>' + esc(pod.name) + '</td><td class="' + (pod.ready ? 'ok' : 'bad') + '"><span class="status-dot"></span>' + (pod.ready ? 'READY' : 'CHECK') + '</td><td>' + pod.restarts + '</td></tr>').join('');
+      const serviceRows = services.map((svc) => '<tr><td>' + esc(svc.namespace) + '</td><td>' + esc(svc.name) + '</td><td class="' + (svc.endpointReady ? 'ok' : 'bad') + '">' + svc.endpointReady + '/' + svc.endpointTotal + '</td><td>' + esc(svc.ports) + '</td></tr>').join('');
+      const probeRows = probes.map((probe) => '<tr><td>' + esc(probe.group) + '</td><td>' + esc(probe.name) + '</td><td class="' + (probe.status === 'ok' ? 'ok' : 'bad') + '"><span class="status-dot"></span>' + esc(probe.status) + '</td><td>' + esc(probe.http_status || '') + '</td></tr>').join('');
+      el('sparkPanel').innerHTML = '<div class="table-wrap" style="max-height:332px"><table><thead><tr><th>Scope</th><th>Name</th><th>Status</th><th>Extra</th></tr></thead><tbody>' + (podRows + serviceRows + probeRows || '<tr><td colspan="4">No Spark evidence in this build.</td></tr>') + '</tbody></table></div>';
     }
     function table(node, headers, rows) {
-      node.innerHTML = '<thead><tr>' + headers.map((h) => '<th>' + esc(h[0]) + '</th>').join('') + '</tr></thead><tbody>' + rows.map((row) => '<tr>' + headers.map((h) => '<td>' + esc(row[h[1]]) + '</td>').join('') + '</tr>').join('') + '</tbody>';
+      node.innerHTML = '<thead><tr>' + headers.map((h) => '<th>' + esc(h[0]) + '</th>').join('') + '</tr></thead><tbody>' + rows.map((row) => '<tr>' + headers.map((h) => {
+        const value = row[h[1]];
+        const klass = h[1] === 'status' || h[1] === 'ready' || h[1] === 'coverageStatus' ? clsStatus(value) : '';
+        return '<td class="' + klass + '">' + esc(Array.isArray(value) ? value.join(', ') : value) + '</td>';
+      }).join('') + '</tr>').join('') + '</tbody>';
     }
     function setView(view) {
       document.querySelectorAll('.view-btn').forEach((button) => button.classList.toggle('active', button.dataset.targetView === view));
@@ -769,21 +1049,93 @@ const html = `<!doctype html>
       table(el('endpointTable'), [['Namespace','namespace'],['Service','name'],['Type','type'],['Ready Endpoints','endpointReady'],['Ports','ports']], evidence.serviceEndpointIssues.filter((row) => !q || JSON.stringify(row).toLowerCase().includes(q)));
       table(el('riskTable'), [['Severity','severity'],['Category','category'],['Layer','layer'],['Namespace','namespace'],['Name','name'],['Message','message']], evidence.riskEvents.filter((row) => !q || JSON.stringify(row).toLowerCase().includes(q)));
     }
-    function boot() {
+    function ambient() {
+      const canvas = el('ambientCanvas');
+      if (!canvas || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+      const ctx = canvas.getContext('2d');
+      const points = Array.from({ length: 62 }, (_, index) => ({ x: Math.random(), y: Math.random(), vx: (Math.random() - .5) * .00045, vy: (Math.random() - .5) * .00035, hue: index % colors.length }));
+      function size() { canvas.width = innerWidth * devicePixelRatio; canvas.height = innerHeight * devicePixelRatio; }
+      addEventListener('resize', size);
+      size();
+      function frame() {
+        const w = canvas.width, h = canvas.height;
+        ctx.clearRect(0,0,w,h);
+        points.forEach((p) => {
+          p.x += p.vx; p.y += p.vy;
+          if (p.x < 0 || p.x > 1) p.vx *= -1;
+          if (p.y < 0 || p.y > 1) p.vy *= -1;
+        });
+        for (let i = 0; i < points.length; i++) {
+          for (let j = i + 1; j < points.length; j++) {
+            const a = points[i], b = points[j];
+            const dx = (a.x - b.x) * w, dy = (a.y - b.y) * h;
+            const d = Math.hypot(dx, dy);
+            if (d < 180 * devicePixelRatio) {
+              ctx.strokeStyle = 'rgba(34,211,238,' + (0.11 * (1 - d / (180 * devicePixelRatio))) + ')';
+              ctx.beginPath(); ctx.moveTo(a.x*w, a.y*h); ctx.lineTo(b.x*w, b.y*h); ctx.stroke();
+            }
+          }
+        }
+        points.forEach((p) => {
+          ctx.fillStyle = colors[p.hue];
+          ctx.globalAlpha = .42;
+          ctx.beginPath(); ctx.arc(p.x*w, p.y*h, 1.8 * devicePixelRatio, 0, Math.PI * 2); ctx.fill();
+        });
+        ctx.globalAlpha = 1;
+        requestAnimationFrame(frame);
+      }
+      requestAnimationFrame(frame);
+    }
+    async function refreshEvidence() {
+      try {
+        const response = await fetch('evidence.json?ts=' + Date.now(), { cache: 'no-store' });
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        evidence = await response.json();
+        renderAll();
+        el('syncStatus').textContent = 'synced ' + new Date().toLocaleTimeString();
+      } catch (err) {
+        el('syncStatus').textContent = 'local snapshot';
+      }
+    }
+    function renderAll() {
       renderCards();
-      barChart(el('namespaceChart'), evidence.namespaceSummary.slice(0, 18), 'namespace', 'ready', null, '#0f9f9a');
+      healthOrb();
+      renderMiniSpark('heroProbeSpark', [1,3,5,Number(evidence.summary.serviceProbeOk || 0),Number(evidence.summary.serviceProbeTotal || 1)], '#34d399');
+      renderMiniSpark('heroCoverageSpark', [1,20,50,Number(evidence.summary.podCoverageRatio || 0)], '#22d3ee');
+      barChart(el('namespaceChart'), evidence.namespaceSummary.slice(0, 18).map((row, index) => ({ namespace: row.namespace, ready: row.ready, color: colors[index % colors.length] })), 'namespace', 'ready', null, '#34d399');
       stackedProbeChart();
-      barChart(el('restartChart'), evidence.restartHotspots.slice(0, 12).map((pod) => ({ name: pod.namespace + '/' + pod.name, restarts: pod.restarts })), 'name', 'restarts', null, '#d9822b');
-      barChart(el('marketChart'), evidence.jobMarketFit.map((row) => ({ capability: row.capability, score: row.score })), 'capability', 'score', 100, '#2e6bd7');
+      barChart(el('restartChart'), evidence.restartHotspots.slice(0, 12).map((pod, index) => ({ name: pod.namespace + '/' + pod.name, restarts: pod.restarts, color: colors[(index + 2) % colors.length] })), 'name', 'restarts', null, '#f59e0b');
+      barChart(el('marketChart'), evidence.jobMarketFit.map((row, index) => ({ capability: row.capability, score: row.score, color: colors[index % colors.length] })), 'capability', 'score', 100, '#60a5fa');
       layerChart();
       riskChart();
+      timelineChart();
       ringChart();
+      lineageFlow();
       sparkPanel();
       applyFilter();
+    }
+    function boot() {
+      ambient();
+      renderAll();
       setInterval(() => { el('clock').textContent = 'browser time ' + new Date().toLocaleString(); }, 1000);
+      setInterval(refreshEvidence, 60000);
       el('filter').addEventListener('input', applyFilter);
       document.querySelectorAll('.view-btn').forEach((button) => button.addEventListener('click', () => setView(button.dataset.targetView)));
-      const initialView = ['overview','risk','data','services','market'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'overview';
+      document.querySelectorAll('[data-jump-view]').forEach((button) => button.addEventListener('click', () => {
+        setView(button.dataset.jumpView);
+        document.querySelector('.control-strip').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }));
+      document.querySelectorAll('[data-risk-mode]').forEach((button) => button.addEventListener('click', () => {
+        riskMode = button.dataset.riskMode;
+        document.querySelectorAll('[data-risk-mode]').forEach((node) => node.classList.toggle('active', node.dataset.riskMode === riskMode));
+        riskChart();
+      }));
+      el('copyEvidence').addEventListener('click', async () => {
+        const url = location.origin + location.pathname.replace(/\\/$/, '') + '/evidence.json';
+        try { await navigator.clipboard.writeText(url); toast('已复制 evidence.json 地址：' + url); } catch (err) { toast(url); }
+      });
+      addEventListener('resize', () => lineageFlow());
+      const initialView = ['overview','risk','data','services','market','evidence'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'overview';
       setView(initialView);
     }
     boot();
