@@ -561,13 +561,15 @@ def writeV13CloudflareContract(String namespace, String serviceName, String node
         mkdir -p reports/v13-cloudflare
         cat > reports/v13-cloudflare/publication-contract.json <<EOF2
 {
-	  "pipeline_version": "v13",
-	  "portal_service": "${serviceName}.${namespace}.svc.cluster.local",
-	  "compatibility_nodeport_service": "hello-app-v10-portal.${namespace}.svc.cluster.local",
-	  "internal_url": "http://192.168.1.58:${nodePort}/",
-	  "cloudflare_public_hostname": "${publicHost}",
-	  "mutation_policy": "Primary v13 portal deployment/service is applied. The legacy hello-app-v10-portal NodePort remains only as a compatibility alias for the existing Cloudflare route."
-	}
+  "pipeline_version": "v13",
+  "portal_service": "${serviceName}.${namespace}.svc.cluster.local",
+  "nodeport_service": "${serviceName}.${namespace}.svc.cluster.local",
+  "legacy_v12_nodeport_service": "hello-app-v10-portal.${namespace}.svc.cluster.local",
+  "internal_url": "http://192.168.1.58:${nodePort}/",
+  "cloudflare_public_hostname": "${publicHost}",
+  "publication_mode": "independent-nodeport",
+  "mutation_policy": "V13 publishes its own NodePort and must not change the legacy hello-app-v10-portal selector or scale."
+}
 EOF2
         cat reports/v13-cloudflare/publication-contract.json
     """
@@ -643,6 +645,7 @@ def publishV13EvidencePortal(String namespace, String serviceName, String imageN
     sh """
         set -eux
         test -f reports/v13-portal/index.html
+        mkdir -p reports/v13-cloudflare-live
         cat > reports/v13-portal/Dockerfile <<'DOCKERFILE'
 FROM 127.0.0.1:30050/library/nginx-alpine:1.29.7-alpine
 RUN rm -f /etc/nginx/conf.d/default.conf
@@ -716,25 +719,6 @@ metadata:
     app.kubernetes.io/part-of: platform-era
     app.kubernetes.io/component: evidence-portal
 spec:
-  type: ClusterIP
-  selector:
-    app.kubernetes.io/name: platform-era-v13-portal
-  ports:
-  - name: http
-    port: 80
-    targetPort: 80
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: hello-app-v10-portal
-  namespace: ${namespace}
-  labels:
-    app.kubernetes.io/name: platform-era-v13-portal
-    app.kubernetes.io/part-of: platform-era
-    app.kubernetes.io/component: nodeport-compatibility
-    pipeline-version: v13
-spec:
   type: NodePort
   selector:
     app.kubernetes.io/name: platform-era-v13-portal
@@ -780,9 +764,18 @@ EOF2
           fi
           sleep 3
         done
-        kubectl -n ${namespace} scale deployment/hello-app-v10-portal --replicas=0 >/dev/null 2>&1 || true
-        curl -fsS --max-time 5 http://192.168.1.58:${nodePort}/ >/dev/null || true
-        printf '{"primary_service":"%s.%s.svc.cluster.local","compatibility_nodeport_service":"hello-app-v10-portal.%s.svc.cluster.local","internal_url":"http://192.168.1.58:%s/","cloudflare_hostname":"%s","status":"portal_deployed_cloudflare_ready"}\n' "${serviceName}" "${namespace}" "${namespace}" "${nodePort}" "${cloudflareHost}" > reports/v13-cloudflare-preview.json
+        for i in 1 2 3 4 5 6 7 8 9 10; do
+          if curl -fsS --max-time 10 http://192.168.1.58:${nodePort}/evidence.json > reports/v13-cloudflare-live/nodeport-evidence.json &&
+             node -e "const e=JSON.parse(require('fs').readFileSync('reports/v13-cloudflare-live/nodeport-evidence.json','utf8')); if(e.summary?.pipelineVersion !== 'v13') process.exit(1);"; then
+            break
+          fi
+          if [ "\$i" = "10" ]; then
+            echo "v13 independent NodePort did not publish v13 evidence."
+            exit 1
+          fi
+          sleep 3
+        done
+        printf '{"primary_service":"%s.%s.svc.cluster.local","nodeport_service":"%s.%s.svc.cluster.local","legacy_v12_nodeport_service":"hello-app-v10-portal.%s.svc.cluster.local","internal_url":"http://192.168.1.58:%s/","cloudflare_hostname":"%s","status":"portal_deployed_independent_nodeport"}\n' "${serviceName}" "${namespace}" "${serviceName}" "${namespace}" "${namespace}" "${nodePort}" "${cloudflareHost}" > reports/v13-cloudflare-preview.json
         echo "V13 portal: http://192.168.1.58:${nodePort}/"
     """
 }
@@ -985,7 +978,7 @@ EOF2
         cat > reports/cloudflare/README-v13.md <<EOF2
 # V13 Cloudflare display
 Primary portal service: http://${env.V13_PORTAL_SERVICE_NAME ?: 'platform-era-v13-portal'}.${namespace}.svc.cluster.local/
-Compatibility NodePort alias: http://hello-app-v10-portal.${namespace}.svc.cluster.local/
+Legacy V12 NodePort service left untouched: http://hello-app-v10-portal.${namespace}.svc.cluster.local/
 Internal NodePort: http://192.168.1.58:${env.V13_PORTAL_NODEPORT}/
 Requested hostname: ${publicHost}
 Apply this template only after a valid Cloudflare Tunnel token is stored in secret ${tokenSecretName}.

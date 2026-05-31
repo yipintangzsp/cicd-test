@@ -135,7 +135,7 @@ JSON
     ;;
   release-gate)
     mkdir -p reports/v13-governance
-    node -e "const fs=require('fs');const slo=fs.existsSync('reports/v13-governance/slo-budget.json')?JSON.parse(fs.readFileSync('reports/v13-governance/slo-budget.json','utf8')):{};const backup=fs.existsSync('reports/v13-governance/backup-inventory-summary.json');const restore=fs.existsSync('reports/v13-governance/restore-drill-verdict.json');const pct=(slo.availabilityPercent??100);const pass=pct>=80;console.warn('release_gate: availability='+pct+'%');fs.writeFileSync('reports/v13-governance/release-gate.json',JSON.stringify({pass,mode:pct>=90?'PASS':'WARNING'},null,2));"
+    node -e "const fs=require('fs');const slo=fs.existsSync('reports/v13-governance/slo-budget.json')?JSON.parse(fs.readFileSync('reports/v13-governance/slo-budget.json','utf8')):{};const backup=fs.existsSync('reports/v13-governance/backup-inventory-summary.json');const restore=fs.existsSync('reports/v13-governance/restore-drill-verdict.json');const pass=(slo.availabilityPercent??100)>=90 && backup && restore;fs.writeFileSync('reports/v13-governance/release-gate.json',JSON.stringify({pass,checks:{slo,backupInventory:backup,restoreDryRun:restore},mode:'evidence-gate-no-destructive-action'},null,2));if(!pass) process.exit(1);"
     ;;
   runbook-handoff)
     mkdir -p reports/v13-governance
@@ -421,17 +421,26 @@ fs.writeFileSync(
 );
 console.log(`pod_full_coverage=${summary.coverageRecordCount}/${summary.livePodCount}`);
 console.log(`pod_full_coverage_ready=${summary.readyPods}/${summary.livePodCount}`);
-if (!summary.coverageComplete) console.warn('pod coverage incomplete: ' + summary.coverageRecordCount + '/' + summary.livePodCount);
-if (notHealthy.length) console.warn(notHealthy.length + ' pods not healthy');
+if (!summary.coverageComplete) process.exit(1);
+if (notHealthy.length) process.exit(1);
 NODE
     ;;
   cloudflare-public)
-    curl -fsS --max-time 20 "https://${CLOUDFLARE_PUBLIC_HOSTNAME:-platform.heil.ccwu.cc}/" > reports/v13-cloudflare-live/platform.html
+    if [ "${V13_REQUIRE_CLOUDFLARE_PUBLICATION:-false}" = "true" ]; then
+      curl -fsS --max-time 20 "https://${CLOUDFLARE_PUBLIC_HOSTNAME:-platform.heil.ccwu.cc}/" > reports/v13-cloudflare-live/platform.html
+    else
+      curl -fsS --max-time 20 "http://192.168.1.58:${V13_PORTAL_NODEPORT:-30088}/" > reports/v13-cloudflare-live/platform.html
+      printf 'independent-nodeport; legacy Cloudflare route left untouched\n' > reports/v13-cloudflare-live/publication-mode.txt
+    fi
     grep -q 'ZhangLab DevOps V13 Control Surface' reports/v13-cloudflare-live/platform.html
     ;;
   portal-evidence)
-    curl -fsS --max-time 20 "https://${CLOUDFLARE_PUBLIC_HOSTNAME:-platform.heil.ccwu.cc}/evidence.json" > reports/v13-cloudflare-live/evidence.json || true
-    if [ -s reports/v13-cloudflare-live/evidence.json ]; then node -e "const e=JSON.parse(require('fs').readFileSync('reports/v13-cloudflare-live/evidence.json','utf8')); if(!e.summary) { console.warn("cloudflare-evidence: summary missing"); }; console.log(e.summary.pipelineVersion || e.summary.pipeline_version || 'v13')"; fi
+    if [ "${V13_REQUIRE_CLOUDFLARE_PUBLICATION:-false}" = "true" ]; then
+      curl -fsS --max-time 20 "https://${CLOUDFLARE_PUBLIC_HOSTNAME:-platform.heil.ccwu.cc}/evidence.json" > reports/v13-cloudflare-live/evidence.json || true
+    else
+      curl -fsS --max-time 20 "http://192.168.1.58:${V13_PORTAL_NODEPORT:-30088}/evidence.json" > reports/v13-cloudflare-live/evidence.json || true
+    fi
+    if [ -s reports/v13-cloudflare-live/evidence.json ]; then node -e "const e=JSON.parse(require('fs').readFileSync('reports/v13-cloudflare-live/evidence.json','utf8')); if(!e.summary) process.exit(1); console.log(e.summary.pipelineVersion || e.summary.pipeline_version || 'v13')"; fi
     ;;
   maturity-score)
     node -e "const fs=require('fs');const gap=fs.existsSync('reports/v13-market-fit/jenkins-tool-gap.txt')?fs.readFileSync('reports/v13-market-fit/jenkins-tool-gap.txt','utf8'):'';const missing=(gap.match(/=missing/g)||[]).length;const suspicious=fs.existsSync('reports/v13-cluster-resilience/suspicious-idle-services.json')?JSON.parse(fs.readFileSync('reports/v13-cluster-resilience/suspicious-idle-services.json','utf8')).length:0;const score=Math.max(0,100-missing*4-suspicious*2);fs.writeFileSync('reports/v13-market-fit/maturity-score.json',JSON.stringify({score,missingTools:missing,suspiciousIdleServices:suspicious},null,2));console.log('v13_maturity_score='+score)"
@@ -444,8 +453,13 @@ NODE
     kubectl -n "$PORTAL_NAMESPACE" get deploy "$PORTAL_SERVICE" -o wide > reports/v13-plan-conformance/portal-deployment.txt 2>&1 || failures=$((failures + 1))
     kubectl -n "$PORTAL_NAMESPACE" get svc "$PORTAL_SERVICE" -o wide > reports/v13-plan-conformance/portal-primary-service.txt 2>&1 || failures=$((failures + 1))
     kubectl -n "$PORTAL_NAMESPACE" get svc hello-app-v10-portal -o wide > reports/v13-plan-conformance/portal-compat-service.txt 2>&1 || failures=$((failures + 1))
+    kubectl -n "$PORTAL_NAMESPACE" get svc hello-app-v10-portal -o json > reports/v13-plan-conformance/portal-legacy-service.json 2>&1 || failures=$((failures + 1))
     curl -fsS --max-time 10 "http://${PORTAL_SERVICE}.${PORTAL_NAMESPACE}.svc.cluster.local/" > reports/v13-plan-conformance/portal-primary.html || failures=$((failures + 1))
-    curl -fsS --max-time 10 "https://${CLOUDFLARE_PUBLIC_HOSTNAME:-platform.heil.ccwu.cc}/evidence.json" > reports/v13-plan-conformance/cloudflare-evidence.json || failures=$((failures + 1))
+    if [ "${V13_REQUIRE_CLOUDFLARE_PUBLICATION:-false}" = "true" ]; then
+      curl -fsS --max-time 10 "https://${CLOUDFLARE_PUBLIC_HOSTNAME:-platform.heil.ccwu.cc}/evidence.json" > reports/v13-plan-conformance/cloudflare-evidence.json || failures=$((failures + 1))
+    else
+      printf '{"publication_required":false,"reason":"legacy public route left untouched"}\n' > reports/v13-plan-conformance/cloudflare-evidence.json
+    fi
     if [ -s reports/v13-cluster-resilience/important-on-cloud-workers.txt ]; then
       failures=$((failures + 1))
     fi
@@ -458,7 +472,9 @@ function readJson(file, fallback = {}) {
 }
 const contract = readJson('reports/v13-cloudflare/publication-contract.json');
 add('primary_portal_name', contract.portal_service === 'platform-era-v13-portal.ns-apps.svc.cluster.local', contract.portal_service || 'missing');
-add('compatibility_alias_declared', contract.compatibility_nodeport_service === 'hello-app-v10-portal.ns-apps.svc.cluster.local', contract.compatibility_nodeport_service || 'missing');
+add('independent_nodeport_declared', contract.publication_mode === 'independent-nodeport', contract.publication_mode || 'missing');
+const legacy = readJson('reports/v13-plan-conformance/portal-legacy-service.json', { spec: { selector: {} } });
+add('legacy_v12_selector_preserved', legacy.spec?.selector?.app === 'hello-app-v10-portal' && !legacy.spec?.selector?.['app.kubernetes.io/name'], JSON.stringify(legacy.spec?.selector || {}));
 const count = readJson('reports/v13-observability-import/count.json', { count: 0 });
 add('elasticsearch_events_imported', Number(count.count || 0) > 0, `count=${count.count || 0}`);
 const kibanaImport = readJson('reports/v13-observability-import/kibana-saved-object-import.json', { success: false, successCount: 0 });
@@ -466,12 +482,14 @@ add('kibana_saved_objects_imported', kibanaImport.success === true && Number(kib
 const important = fs.existsSync('reports/v13-cluster-resilience/important-on-cloud-workers.txt') ? fs.readFileSync('reports/v13-cluster-resilience/important-on-cloud-workers.txt', 'utf8').trim() : '';
 add('cloud_workers_low_priority_only', important.length === 0, important ? important.split('\n').slice(0, 5).join('; ') : 'none');
 const evidence = readJson('reports/v13-plan-conformance/cloudflare-evidence.json');
-add('cloudflare_evidence_is_v13', evidence.summary?.pipelineVersion === 'v13', evidence.summary?.pipelineVersion || 'missing');
+if (process.env.V13_REQUIRE_CLOUDFLARE_PUBLICATION === 'true') {
+  add('cloudflare_evidence_is_v13', evidence.summary?.pipelineVersion === 'v13', evidence.summary?.pipelineVersion || 'missing');
+} else {
+  add('cloudflare_publication_not_required', evidence.publication_required === false, evidence.reason || 'missing');
+}
 fs.writeFileSync('reports/v13-plan-conformance/plan-conformance.json', JSON.stringify({ pass: checks.every((check) => check.pass), checks }, null, 2) + '\n');
 for (const check of checks) console.log(`${check.pass ? 'ok' : 'fail'} ${check.name} ${check.detail}`);
-if (checks.some((check) => !check.pass)) console.warn('plan_conformance: some checks failed');
-console.log('plan_conformance_verdict=' + checks.every(c => c.pass));
-console.error(checks.filter(c => !c.pass).map(c => c.name).join(','));
+if (checks.some((check) => !check.pass)) process.exit(1);
 NODE
     if [ "$failures" -gt 0 ]; then
       echo "plan_conformance_failures=$failures"

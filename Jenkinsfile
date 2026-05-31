@@ -1,172 +1,52 @@
-// Managed repair: v1-base. Each Jenkinsfile is self-contained and keeps PIPELINE_VERSION choices.
-node {
-    properties([
-        disableConcurrentBuilds(),
-        buildDiscarder(logRotator(numToKeepStr: '30')),
-        parameters([
-            choice(name: 'PIPELINE_VERSION', choices: ['Jenkinsfile-expert-v9', 'Jenkinsfile-v8-jkvideo', 'Jenkinsfile-expert-v8', 'Jenkinsfile-expert-v7', 'Jenkinsfile-expert-v6', 'Jenkinsfile-expert-v5', 'Jenkinsfile-expert-v4', 'Jenkinsfile-expert-v3', 'Jenkinsfile-expert-v2', 'Jenkinsfile'], description: '选择要运行的 Jenkinsfile 版本，按大版本到低版本排列。'),
-            choice(name: 'DEPLOY_MODE', choices: ['V3.0-ArgoCD-GitOps', 'V2.0-Legacy-Direct'], description: '架构路由')
-        ])
+// GitHub entrypoint: keep every independent pipeline version visible, newest first.
+
+def pipelineVersions = [
+    'Jenkinsfile-epoch-v13',
+    'Jenkinsfile-expert-v13',
+    'Jenkinsfile-expert-v12',
+    'Jenkinsfile-expert-v11',
+    'Jenkinsfile-expert-v10',
+    'Jenkinsfile-expert-v9',
+    'Jenkinsfile-v8-jkvideo',
+    'Jenkinsfile-expert-v8',
+    'Jenkinsfile-expert-v7',
+    'Jenkinsfile-expert-v6',
+    'Jenkinsfile-expert-v5',
+    'Jenkinsfile-expert-v4',
+    'Jenkinsfile-expert-v3',
+    'Jenkinsfile-expert-v2',
+    'Jenkinsfile-v2-tested',
+    'Jenkinsfile_v2',
+    'Jenkinsfile-v1'
+]
+
+properties([
+    disableConcurrentBuilds(),
+    buildDiscarder(logRotator(numToKeepStr: '45', artifactNumToKeepStr: '30')),
+    pipelineTriggers([githubPush(), pollSCM('* * * * *')]),
+    parameters([
+        choice(name: 'PIPELINE_VERSION', choices: pipelineVersions, description: 'Select GitHub pipeline version, newest first.'),
+        choice(name: 'DEPLOY_ENV', choices: ['dev', 'test', 'prod'], description: 'Target environment label.'),
+        booleanParam(name: 'DRY_RUN', defaultValue: false, description: 'Run real build/deploy path by default.'),
+        booleanParam(name: 'RUN_UNIT_TESTS', defaultValue: true, description: 'Run unit tests.'),
+        booleanParam(name: 'RUN_SMOKE_TEST', defaultValue: true, description: 'Run smoke checks.'),
+        string(name: 'V13_PORTAL_NODEPORT', defaultValue: '30088', description: '[v13] Independent portal NodePort.'),
+        booleanParam(name: 'V13_REQUIRE_CLOUDFLARE_PUBLICATION', defaultValue: false, description: '[v13] Keep false unless Cloudflare is intentionally moved to V13.')
     ])
+])
 
-    env.PIPELINE_LABEL = 'v1-base'
-    env.REGISTRY = '127.0.0.1:30050'
-    env.APP_NAME = 'hello-app'
-    env.CONFIG_REPO_URL = 'http://gitlab-service/root/hello-app-config.git'
-    env.GITOPS_CREDENTIALS = 'gitlab-root-auth'
-
-    def deployEnv = (params.DEPLOY_ENV ?: 'dev').trim()
-    def dryRun = (params.DRY_RUN == true)
-    def skipSecurity = (params.SKIP_SECURITY_SCAN == true)
-
-    try {
-        stage('Checkout') {
-            checkout scm
-            sh 'mkdir -p reports meta'
-            env.GIT_COMMIT_ID = sh(returnStdout: true, script: 'git rev-parse --short=7 HEAD').trim()
-            env.IMAGE_NAME = "${env.REGISTRY}/${env.APP_NAME}:${env.GIT_COMMIT_ID}"
-            writeFile file: 'meta/build-info.txt', text: "pipeline=${env.PIPELINE_LABEL}\ncommit=${env.GIT_COMMIT_ID}\nimage=${env.IMAGE_NAME}\nenv=${deployEnv}\n"
+node {
+    stage('Select GitHub Pipeline Version') {
+        checkout scm
+        def selected = (params.PIPELINE_VERSION ?: 'Jenkinsfile-epoch-v13').trim()
+        if (!pipelineVersions.contains(selected)) {
+            error "Unsupported PIPELINE_VERSION: ${selected}"
         }
-
-        stage('SonarQube') {
-            if (skipSecurity) { echo 'SKIP_SECURITY_SCAN=true, skipped.' } else {
-                sh '''#!/bin/sh
-set +e
-mkdir -p reports
-if [ -f pom.xml ]; then
-  docker run --rm --network host -v "$PWD:/workspace" -v /var/jenkins_home/.m2:/root/.m2 -w /workspace maven:3-eclipse-temurin-17 \
-    mvn -B -DskipTests compile sonar:sonar -Dsonar.host.url=http://sonar.devops.local -Dsonar.projectKey=hello-app > reports/sonar.log 2>&1 || true
-else
-  echo 'pom.xml not found' > reports/sonar.log
-fi
-exit 0
-'''
-            }
+        if (!fileExists(selected)) {
+            error "Selected Jenkinsfile does not exist: ${selected}"
         }
-
-        stage('Build & Push') {
-            sh '''#!/bin/sh
-set -eux
-docker build -t "$IMAGE_NAME" .
-docker tag "$IMAGE_NAME" "$REGISTRY/$APP_NAME:stable"
-docker push "$IMAGE_NAME"
-docker push "$REGISTRY/$APP_NAME:stable"
-'''
-        }
-
-
-
-        if (!dryRun) {
-            stage('Deploy: V3.0 ArgoCD GitOps') {
-                withCredentials([usernamePassword(credentialsId: env.GITOPS_CREDENTIALS, usernameVariable: 'GIT_USERNAME', passwordVariable: 'GIT_PASSWORD')]) {
-                    sh '''#!/bin/sh
-set -eux
-DEPLOY_PATH="${DEPLOY_ENV:-dev}"
-rm -rf config-repo .git-askpass
-cat > .git-askpass <<'ASKPASS'
-#!/bin/sh
-case "$1" in
-  *Username*) printf "%s\n" "$GIT_USERNAME" ;;
-  *Password*) printf "%s\n" "$GIT_PASSWORD" ;;
-  *) printf "%s\n" "$GIT_PASSWORD" ;;
-esac
-ASKPASS
-chmod 700 .git-askpass
-export GIT_ASKPASS="$PWD/.git-askpass"
-export GIT_TERMINAL_PROMPT=0
-git clone "$CONFIG_REPO_URL" config-repo
-cd config-repo
-mkdir -p "$DEPLOY_PATH"
-if [ ! -f namespace.yaml ]; then
-cat > namespace.yaml <<'YAML'
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: ns-apps
-YAML
-fi
-if [ ! -f "$DEPLOY_PATH/deployment.yaml" ]; then
-cat > "$DEPLOY_PATH/deployment.yaml" <<'YAML'
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: hello-app
-  namespace: ns-apps
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: hello-app
-  template:
-    metadata:
-      labels:
-        app: hello-app
-    spec:
-      containers:
-        - name: hello-app
-          image: 127.0.0.1:30050/hello-app:stable
-          imagePullPolicy: IfNotPresent
-          ports:
-            - containerPort: 80
-          resources:
-            requests:
-              cpu: 50m
-              memory: 128Mi
-            limits:
-              cpu: 500m
-              memory: 512Mi
-YAML
-fi
-if [ ! -f "$DEPLOY_PATH/hello-app-service.yaml" ]; then
-cat > "$DEPLOY_PATH/hello-app-service.yaml" <<'YAML'
-apiVersion: v1
-kind: Service
-metadata:
-  name: hello-app
-  namespace: ns-apps
-spec:
-  selector:
-    app: hello-app
-  ports:
-    - name: http
-      port: 80
-      targetPort: 80
-YAML
-fi
-if [ ! -f "$DEPLOY_PATH/kustomization.yaml" ]; then
-cat > "$DEPLOY_PATH/kustomization.yaml" <<'YAML'
-resources:
-  - ../namespace.yaml
-  - deployment.yaml
-  - hello-app-service.yaml
-YAML
-fi
-sed -i "s|image: .*|image: $IMAGE_NAME|g" "$DEPLOY_PATH/deployment.yaml"
-git config user.email 'jenkins@devops.local'
-git config user.name 'Jenkins Pipeline'
-git add namespace.yaml "$DEPLOY_PATH/deployment.yaml" "$DEPLOY_PATH/hello-app-service.yaml" "$DEPLOY_PATH/kustomization.yaml"
-git diff --cached --quiet || git commit -m "ci: deploy $APP_NAME $GIT_COMMIT_ID to $DEPLOY_PATH"
-git push origin HEAD:main
-'''
-                }
-            }
-
-            stage('部署后验证') {
-                sh '''#!/bin/sh
-set -eux
-DEPLOY_PATH="${DEPLOY_ENV:-dev}"
-kubectl apply -k "config-repo/$DEPLOY_PATH"
-if [ "${RUN_SMOKE_TEST:-true}" = 'true' ]; then
-  kubectl rollout status deployment/hello-app -n ns-apps --timeout=240s
-  kubectl get pods -n ns-apps -l app=hello-app -o wide
-fi
-'''
-            }
-        } else {
-            echo 'DRY_RUN enabled; GitOps update and deployment skipped.'
-        }
-    } finally {
-        archiveArtifacts artifacts: 'reports/**,meta/**', allowEmptyArchive: true
-        cleanWs deleteDirs: true, disableDeferredWipeout: true
+        currentBuild.displayName = "#${env.BUILD_NUMBER} github ${selected}"
+        currentBuild.description = "github-entry=${selected}"
+        load selected
     }
 }
