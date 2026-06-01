@@ -434,7 +434,7 @@ const payload = {
   dashboard,
   folderUid: '',
   overwrite: true,
-  message: `Jenkins V13 observability import build ${process.env.BUILD_NUMBER || 'unknown'}`,
+  message: 'Jenkins V13 observability import build ' + (process.env.BUILD_NUMBER || 'unknown'),
 };
 fs.writeFileSync('reports/v13-observability-import/grafana-import-payload.json', JSON.stringify(payload, null, 2));
 NODE
