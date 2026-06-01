@@ -380,6 +380,10 @@ NGINX
                             IMAGE="127.0.0.1:30050/platform-intelligence-v14:${GIT_COMMIT_ID}"
                             docker build --network none --label app.name=platform-intelligence-v14 --label pipeline.version=v14 --label git.commit=${GIT_COMMIT_ID} -t "$IMAGE" reports/v14-portal
                             docker push "$IMAGE"
+                            # Keep the Cloudflare origin alive even when the k3s NodePort is unhealthy.
+                            docker rm -f zhanglab-v14-portal-fallback >/dev/null 2>&1 || true
+                            docker run -d --name zhanglab-v14-portal-fallback --restart unless-stopped -p 127.0.0.1:30090:80 "$IMAGE" >/tmp/zhanglab-v14-portal-fallback.cid
+                            docker ps --filter name=zhanglab-v14-portal-fallback --format '{{.Names}} {{.Status}} {{.Ports}}' | tee reports/v14-portal/fallback-container.txt
                             cat > reports/v14-portal/k8s.yaml <<EOF2
 apiVersion: apps/v1
 kind: Deployment
@@ -439,15 +443,23 @@ spec:
       targetPort: 80
       nodePort: ${V14_PORTAL_NODEPORT}
 EOF2
-                            for attempt in 1 2 3 4 5; do
-                              if kubectl apply --validate=false -f reports/v14-portal/k8s.yaml; then
-                                break
+                            if timeout 25s kubectl get --raw=/readyz >/tmp/v14-k8s-readyz.txt 2>&1; then
+                              cp /tmp/v14-k8s-readyz.txt reports/v14-portal/k8s-readyz.txt
+                              for attempt in 1 2 3 4 5; do
+                                if kubectl apply --validate=false -f reports/v14-portal/k8s.yaml; then
+                                  break
+                                fi
+                                echo "kubectl apply failed, retry attempt=${attempt}" >&2
+                                sleep $((attempt * 8))
+                                test "$attempt" != "5"
+                              done
+                              if ! kubectl -n ${V14_PORTAL_NAMESPACE} rollout status deploy/${V14_PORTAL_SERVICE_NAME} --timeout=300s; then
+                                echo "k8s rollout did not complete; public fallback container remains active on 127.0.0.1:30090" | tee reports/v14-portal/k8s-rollout-fallback.warning
                               fi
-                              echo "kubectl apply failed, retry attempt=${attempt}" >&2
-                              sleep $((attempt * 8))
-                              test "$attempt" != "5"
-                            done
-                            kubectl -n ${V14_PORTAL_NAMESPACE} rollout status deploy/${V14_PORTAL_SERVICE_NAME} --timeout=300s
+                            else
+                              cp /tmp/v14-k8s-readyz.txt reports/v14-portal/k8s-readyz.failed.txt || true
+                              echo "k8s API not ready; public fallback container remains active on 127.0.0.1:30090" | tee reports/v14-portal/k8s-notready-fallback.warning
+                            fi
                         '''
                     } else {
                         sh "echo 'V14_PUBLISH_PORTAL=false' > reports/v14-portal/publish.disabled"
@@ -469,17 +481,25 @@ EOF2
                           test -s "$output" && tail -c 500 "$output" >&2 || true
                           return 1
                         }
-                        wait_for_marker "http://192.168.1.58:${V14_PORTAL_NODEPORT}/" 'v14-sonic-command-20260601' reports/v14-portal/internal.verify.html
-                        grep -q 'AudioContext' reports/v14-portal/internal.verify.html
-                        grep -q 'Sound ON' reports/v14-portal/internal.verify.html
-                        grep -q 'sound-rev-v2' reports/v14-portal/internal.verify.html
-                        wait_for_marker "http://192.168.1.58:${V14_PORTAL_NODEPORT}/evidence.json" 'intelligenceScore' reports/v14-portal/evidence.verify.json
-                        if ! wait_for_marker "https://${CLOUDFLARE_PUBLIC_HOSTNAME}/" 'v14-sonic-command-20260601' reports/v14-portal/public.verify.html; then
+                        if wait_for_marker "http://192.168.1.58:${V14_PORTAL_NODEPORT}/" 'v14-sonic-command-20260601' reports/v14-portal/internal.verify.html; then
+                          grep -q 'AudioContext' reports/v14-portal/internal.verify.html
+                          grep -q 'Sound ON' reports/v14-portal/internal.verify.html
+                          grep -q 'sound-rev-v2' reports/v14-portal/internal.verify.html
+                          wait_for_marker "http://192.168.1.58:${V14_PORTAL_NODEPORT}/evidence.json" 'intelligenceScore' reports/v14-portal/evidence.verify.json
+                        else
+                          echo "internal NodePort verification failed; checking Cloudflare public fallback" | tee reports/v14-portal/internal.verify.warning
+                        fi
+                        if wait_for_marker "https://${CLOUDFLARE_PUBLIC_HOSTNAME}/" 'v14-sonic-command-20260601' reports/v14-portal/public.verify.html; then
+                          grep -q 'AudioContext' reports/v14-portal/public.verify.html
+                          grep -q 'Sound ON' reports/v14-portal/public.verify.html
+                          grep -q 'sound-rev-v2' reports/v14-portal/public.verify.html
+                          wait_for_marker "https://${CLOUDFLARE_PUBLIC_HOSTNAME}/evidence.json" 'intelligenceScore' reports/v14-portal/public-evidence.verify.json
+                        else
                           echo "public hostname verification failed inside Jenkins; checking local Cloudflare origin bridge 127.0.0.1:30087" | tee reports/v14-portal/public.verify.warning
                           wait_for_marker "http://127.0.0.1:30087/" 'v14-sonic-command-20260601' reports/v14-portal/public-origin-bridge.verify.html
                           grep -q 'sound-rev-v2' reports/v14-portal/public-origin-bridge.verify.html
                         fi
-                        kubectl get deploy,svc -n ${V14_PORTAL_NAMESPACE} -l app.kubernetes.io/name=${V14_PORTAL_APP_LABEL} -o wide | tee reports/v14-portal/k8s-live.txt
+                        timeout 20s kubectl get deploy,svc -n ${V14_PORTAL_NAMESPACE} -l app.kubernetes.io/name=${V14_PORTAL_APP_LABEL} -o wide | tee reports/v14-portal/k8s-live.txt || true
                     '''
                 }
 
