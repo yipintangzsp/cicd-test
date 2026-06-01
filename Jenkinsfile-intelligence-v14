@@ -1,0 +1,475 @@
+// Jenkinsfile-intelligence-v14: platform intelligence epoch.
+// V14 inherits V13 evidence, then adds risk scoring, recovery playbooks,
+// topology intelligence, and a more dynamic operations cockpit.
+
+def v14Stages = [
+    ['14.01 安全边界继承确认', 'guardrail-inheritance'],
+    ['14.02 只读证据模式确认', 'guardrail-readonly'],
+    ['14.03 V13 基线差异捕获', 'baseline-v13-delta'],
+    ['14.04 成功不等于可用校验', 'delivery-proof'],
+    ['14.05 Jenkins 构建证据闭环', 'jenkins-proof'],
+    ['14.06 GitLab/GitHub 版本矩阵', 'source-version-matrix'],
+    ['14.07 ArgoCD 同步智能评分', 'argocd-sync-intelligence'],
+    ['14.08 Harbor 镜像恢复索引', 'harbor-image-recovery'],
+    ['14.09 镜像标签明确性审计', 'image-tag-policy'],
+    ['14.10 Cloudflare 入口体验评分', 'cloudflare-experience'],
+    ['14.11 前端动态交互证据', 'frontend-dynamic-proof'],
+    ['14.12 服务星图拓扑证据', 'service-constellation'],
+    ['14.13 风险热力图证据', 'risk-heatmap'],
+    ['14.14 恢复剧本索引', 'recovery-playbook-index'],
+    ['14.15 PVC/PV 持久化证明', 'recovery-pvc-pv'],
+    ['14.16 Secret 脱敏清单证明', 'secret-redaction-proof'],
+    ['14.17 备份年龄与范围证明', 'backup-age-scope'],
+    ['14.18 干跑恢复路径证明', 'restore-dryrun-proof'],
+    ['14.19 回滚范围证明', 'rollback-scope-proof'],
+    ['14.20 Worker 节点保护评分', 'worker-node-protection'],
+    ['14.21 Node Ready 趋势证据', 'node-ready-trend'],
+    ['14.22 Node 资源水位证据', 'node-resource-watermark'],
+    ['14.23 Pod 调度分布评分', 'pod-placement-score'],
+    ['14.24 Pod 重启压力评分', 'pod-restart-pressure'],
+    ['14.25 Endpoint 缺口评分', 'endpoint-gap-score'],
+    ['14.26 Service 探针闭环评分', 'service-probe-closure'],
+    ['14.27 Namespace 健康分层', 'namespace-health-layer'],
+    ['14.28 Deployment 可用副本证明', 'deployment-availability'],
+    ['14.29 StatefulSet 风险证明', 'statefulset-risk-proof'],
+    ['14.30 DaemonSet 覆盖证明', 'daemonset-coverage'],
+    ['14.31 Spark Operator 智能评分', 'spark-operator-score'],
+    ['14.32 Spark Webhook 证据深化', 'spark-webhook-depth'],
+    ['14.33 Kafka Broker 链路评分', 'kafka-broker-link'],
+    ['14.34 Kafka UI 可用性证据', 'kafka-ui-proof'],
+    ['14.35 Flink JobManager 任务面板', 'flink-jobmanager-proof'],
+    ['14.36 Flink Slot 容量评分', 'flink-slot-score'],
+    ['14.37 Airflow DAG 可见性评分', 'airflow-dag-visibility'],
+    ['14.38 Trino 查询面风险评分', 'trino-query-score'],
+    ['14.39 Superset BI 展示评分', 'superset-bi-score'],
+    ['14.40 MinIO 对象湖证明', 'minio-object-lake'],
+    ['14.41 MySQL/PostgreSQL 数据层证据', 'database-layer-proof'],
+    ['14.42 Elasticsearch 写入闭环', 'elastic-write-closure'],
+    ['14.43 Kibana Data View 新鲜度', 'kibana-data-freshness'],
+    ['14.44 Kibana 图表对象评分', 'kibana-object-score'],
+    ['14.45 Grafana 数据源闭环', 'grafana-datasource-closure'],
+    ['14.46 Grafana 图表密度评分', 'grafana-panel-density'],
+    ['14.47 Prometheus Target 覆盖', 'prometheus-target-coverage'],
+    ['14.48 Loki 日志就绪证据', 'loki-readiness-proof'],
+    ['14.49 Jaeger Trace 入口证据', 'jaeger-trace-proof'],
+    ['14.50 OpenTelemetry 入口证明', 'otel-ingress-proof'],
+    ['14.51 Zabbix 展示计划证据', 'zabbix-display-proof'],
+    ['14.52 Jenkins 日志到 Kafka 闭环', 'jenkins-log-kafka-closure'],
+    ['14.53 Filebeat 到 Elasticsearch 闭环', 'filebeat-es-closure'],
+    ['14.54 钉钉通知证据评分', 'dingtalk-notify-proof'],
+    ['14.55 SonarQube 质量门禁评分', 'sonarqube-quality-score'],
+    ['14.56 Trivy 安全扫描覆盖', 'trivy-security-coverage'],
+    ['14.57 Cosign 签名准备度', 'cosign-readiness'],
+    ['14.58 Helm 渲染准备度', 'helm-render-readiness'],
+    ['14.59 Terraform 规划准备度', 'terraform-plan-readiness'],
+    ['14.60 Kubeconform Schema 准备度', 'kubeconform-schema-readiness'],
+    ['14.61 招聘高频能力覆盖评分', 'market-capability-score'],
+    ['14.62 平台闲置服务识别', 'idle-service-intelligence'],
+    ['14.63 服务 Owner 映射', 'service-owner-map'],
+    ['14.64 SLO 错误预算智能化', 'slo-budget-intelligence'],
+    ['14.65 容量扩容窗口建议', 'capacity-window-recommendation'],
+    ['14.66 发布风险评分', 'release-risk-score'],
+    ['14.67 变更影响面评分', 'change-impact-score'],
+    ['14.68 回归检测矩阵', 'regression-detection-matrix'],
+    ['14.69 观测延迟评分', 'observability-lag-score'],
+    ['14.70 前端证据点击路径', 'portal-click-path'],
+    ['14.71 服务钻取路径', 'service-drilldown-path'],
+    ['14.72 风险钻取路径', 'risk-drilldown-path'],
+    ['14.73 恢复钻取路径', 'recovery-drilldown-path'],
+    ['14.74 数据链路钻取路径', 'data-lineage-drilldown'],
+    ['14.75 v13/v14 对比摘要', 'v13-v14-comparison'],
+    ['14.76 平台智能总分', 'platform-intelligence-score'],
+    ['14.77 风险优先队列', 'risk-priority-queue'],
+    ['14.78 恢复优先队列', 'recovery-priority-queue'],
+    ['14.79 证据完整性评分', 'evidence-completeness-score'],
+    ['14.80 图表复杂度评分', 'chart-complexity-score'],
+    ['14.81 前端绚丽程度证据', 'visual-richness-proof'],
+    ['14.82 长期稳定性建议', 'long-term-stability-advice'],
+    ['14.83 非破坏性最终审计', 'final-safety-audit'],
+    ['14.84 V15 候选路线图', 'v15-candidate-roadmap'],
+]
+
+def p(String name, Object fallbackValue) {
+    return params.containsKey(name) && params[name] != null ? params[name] : fallbackValue
+}
+
+def refreshWorkspace = {
+    if (env.JOB_NAME == 'github-cicd-test') {
+        sh '''
+            set -eux
+            git clone /var/jenkins_home/github-cache/cicd-test.git .
+            git checkout -f main
+            git remote set-url origin https://github.com/yipintangzsp/cicd-test.git
+        '''
+    } else {
+        checkout scm
+    }
+}
+
+def runV14 = {
+    timeout(time: 210, unit: 'MINUTES') {
+        timestamps {
+            try {
+                stage('V14.00 运行 V13 Foundation') {
+                    load 'Jenkinsfile-epoch-v13'
+                }
+
+                stage('V14.01 重新载入源码') {
+                    deleteDir()
+                    refreshWorkspace()
+                    sh 'mkdir -p meta reports/v14-baseline reports/v14-intelligence reports/v14-portal reports/v14-observability-import reports/v14-stage-manifest'
+                    env.SCRIPT_NAME = 'Jenkinsfile-intelligence-v14'
+                    env.APP_NAME = 'platform-intelligence-v14'
+                    env.REGISTRY = '127.0.0.1:30050'
+                    env.V14_PORTAL_NAMESPACE = "${p('V14_PORTAL_NAMESPACE', p('V13_PORTAL_NAMESPACE', 'ns-apps'))}"
+                    env.V14_PORTAL_SERVICE_NAME = "${p('V14_PORTAL_SERVICE_NAME', p('V13_PORTAL_SERVICE_NAME', 'platform-era-v13-portal'))}"
+                    env.V14_PORTAL_APP_LABEL = "${p('V14_PORTAL_APP_LABEL', 'platform-era-v13-portal')}"
+                    env.V14_PORTAL_NODEPORT = "${p('V14_PORTAL_NODEPORT', p('V13_PORTAL_NODEPORT', '30089'))}"
+                    env.V14_KIBANA_INDEX_PREFIX = "${p('V14_KIBANA_INDEX_PREFIX', 'jenkins-v14-intelligence')}"
+                    env.V14_GRAFANA_DASHBOARD_TITLE = "${p('V14_GRAFANA_DASHBOARD_TITLE', 'ZhangLab V14 Platform Intelligence')}"
+                    env.V14_IMPORT_OBSERVABILITY_ASSETS = "${p('V14_IMPORT_OBSERVABILITY_ASSETS', true)}"
+                    env.V14_PUBLISH_PORTAL = "${p('V14_PUBLISH_PORTAL', true)}"
+                    env.V14_STRICT_RISK_GATE = "${p('V14_STRICT_RISK_GATE', false)}"
+                    env.CLOUDFLARE_PUBLIC_HOSTNAME = "${p('CLOUDFLARE_PUBLIC_HOSTNAME', 'platform.heil.ccwu.cc')}"
+                    env.GIT_COMMIT_ID = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
+                    env.GIT_BRANCH_NAME = sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim()
+                    env.GIT_AUTHOR = sh(script: 'git log -1 --pretty=%an', returnStdout: true).trim()
+                    env.GIT_COMMIT_MSG = sh(script: 'git log -1 --pretty=%s', returnStdout: true).trim()
+                    env.SEMVER = "0.0.${env.BUILD_NUMBER}"
+                    currentBuild.displayName = "#${env.BUILD_NUMBER} v14 ${env.SEMVER}"
+                    currentBuild.description = "${env.GIT_AUTHOR} | ${env.GIT_COMMIT_MSG.take(60)}"
+                    sh '''
+node - <<'NODE'
+const fs = require('fs');
+const info = {
+  script: process.env.SCRIPT_NAME,
+  build: process.env.BUILD_NUMBER,
+  semver: process.env.SEMVER,
+  commit: process.env.GIT_COMMIT_ID,
+  branch: process.env.GIT_BRANCH_NAME,
+  portal_url: `http://192.168.1.58:${process.env.V14_PORTAL_NODEPORT}/`,
+  cloudflare_hostname: process.env.CLOUDFLARE_PUBLIC_HOSTNAME,
+  inherits: 'Jenkinsfile-epoch-v13'
+};
+fs.writeFileSync('meta/v14-build-info.json', JSON.stringify(info, null, 2) + '\n');
+NODE
+                    '''
+                }
+
+                stage('V14.02 捕获 V13 Fresh Baseline') {
+                    sh '''
+                        set -eu
+                        curl -fsS --max-time 20 "http://192.168.1.58:${V14_PORTAL_NODEPORT}/evidence.json" -o reports/v14-baseline/v13-evidence.json || printf '{"summary":{"collectionWarning":"v13 baseline unavailable"}}\n' > reports/v14-baseline/v13-evidence.json
+                        node -e "JSON.parse(require('fs').readFileSync('reports/v14-baseline/v13-evidence.json','utf8'))"
+                    '''
+                }
+
+                stage('V14.03 采集实时平台资产') {
+                    sh '''
+                        set -eu
+                        kubectl get pods -A -o json > meta/v14-pods-live.json
+                        kubectl get svc -A -o json > meta/v14-services-live.json
+                        kubectl get endpoints -A -o json > meta/v14-endpoints-live.json || true
+                        kubectl get deploy,statefulset,daemonset -A -o json > meta/v14-workloads-live.json
+                        kubectl get nodes -o json > meta/v14-nodes-live.json
+                        kubectl get events -A --sort-by=.lastTimestamp -o json > meta/v14-events-live.json || true
+                        kubectl get pvc -A -o json > meta/v14-pvc-live.json || true
+                        kubectl get pv -o json > meta/v14-pv-live.json || true
+                        kubectl top nodes --no-headers > meta/v14-node-top.txt 2>&1 || true
+                        kubectl top pods -A --no-headers > meta/v14-pod-top.txt 2>&1 || true
+                    '''
+                }
+
+                stage('V14.04 智能阶段计划生成') {
+                    def fixedStages = [
+                        'V14.00 运行 V13 Foundation',
+                        'V14.01 重新载入源码',
+                        'V14.02 捕获 V13 Fresh Baseline',
+                        'V14.03 采集实时平台资产',
+                        'V14.04 智能阶段计划生成'
+                    ]
+                    writeFile file: 'reports/v14-stage-plan.txt', text: (fixedStages + v14Stages.collect { it[0] } + [
+                        'V14.90 生成智能资产',
+                        'V14.91 V14 资产质量门禁',
+                        'V14.92 导入 Grafana/Kibana/Elasticsearch',
+                        'V14.93 发布 V14 Hypergrid 前端',
+                        'V14.94 V14 成果验证',
+                        'V14.95 最终结论与归档'
+                    ]).join('\n') + '\n'
+                    sh 'nl -ba reports/v14-stage-plan.txt | tee reports/v14-stage-manifest/stage-count.txt'
+                }
+
+                v14Stages.each { item ->
+                    stage(item[0]) {
+                        env.V14_STAGE_KEY = item[1]
+                        env.V14_STAGE_TITLE = item[0]
+                        sh '''
+                            set -eu
+                            node ci/v14_intelligence.mjs check "$V14_STAGE_KEY" "$V14_STAGE_TITLE"
+                        '''
+                    }
+                }
+
+                stage('V14.90 生成智能资产') {
+                    sh '''
+                        set -eu
+                        node ci/v14_intelligence.mjs build
+                    '''
+                }
+
+                stage('V14.91 V14 资产质量门禁') {
+                    sh '''
+                        set -eu
+                        node ci/v14_intelligence.mjs lint
+                        test -s reports/v14-observability.ndjson
+                        test -s reports/v14-grafana-dashboard.json
+                        test -s reports/v14-kibana-dashboard.ndjson
+                        test -s reports/v14-portal/index.html
+                        ACTUAL=$(wc -l < reports/v14-stage-plan.txt | tr -d ' ')
+                        [ "$ACTUAL" -ge 90 ] || { echo "v14 stage count too low: $ACTUAL"; exit 1; }
+                        P1='kubectl[[:space:]]+delete'
+                        P2='docker[[:space:]]+system[[:space:]]+prune'
+                        P3='rm[[:space:]]+-rf'
+                        P4='helm[[:space:]]+uninstall'
+                        P5='git[[:space:]]+reset[[:space:]]+--hard'
+                        grep -RInE "$P1|$P2|$P3|$P4|$P5" Jenkinsfile-intelligence-v14 ci/v14_intelligence.mjs Jenkinsfile-router > reports/v14-intelligence/destructive-scan.txt || true
+                        [ ! -s reports/v14-intelligence/destructive-scan.txt ] || { cat reports/v14-intelligence/destructive-scan.txt; exit 1; }
+                    '''
+                }
+
+                stage('V14.92 导入 Grafana/Kibana/Elasticsearch') {
+                    sh '''
+                        set -eu
+                        mkdir -p reports/v14-observability-import
+                        if [ "${V14_IMPORT_OBSERVABILITY_ASSETS}" != "true" ]; then
+                          echo "V14_IMPORT_OBSERVABILITY_ASSETS=false" | tee reports/v14-observability-import/import.disabled
+                          exit 0
+                        fi
+                        resolve_cluster_url() {
+                          url="$1"
+                          case "$url" in http://*.svc.cluster.local*|https://*.svc.cluster.local*) ;; *) printf '%s' "$url"; return 0 ;; esac
+                          scheme="${url%%://*}"; rest="${url#*://}"; hostport="${rest%%/*}"; path="${rest#"$hostport"}"; [ "$path" != "$rest" ] || path="/"
+                          host="${hostport%%:*}"; portpart="${hostport#"$host"}"; svc="${host%%.*}"; remainder="${host#*.}"; ns="${remainder%%.*}"
+                          ip="$(command kubectl -n "$ns" get svc "$svc" -o jsonpath='{.spec.clusterIP}' 2>/dev/null || true)"
+                          if [ -n "$ip" ] && [ "$ip" != "None" ]; then printf '%s://%s%s%s' "$scheme" "$ip" "$portpart" "$path"; else printf '%s' "$url"; fi
+                        }
+                        ES_URL="$(resolve_cluster_url "${ELASTICSEARCH_URL:-http://elasticsearch.default.svc.cluster.local:9200}")"
+                        KB_URL="$(resolve_cluster_url "${KIBANA_INTERNAL_URL:-http://kibana-service.default.svc.cluster.local:5601}")"
+                        GRAFANA_URL="$(resolve_cluster_url "${GRAFANA_URL:-http://kube-stack-grafana.monitoring.svc.cluster.local}")"
+                        GRAFANA_USER="${GRAFANA_USER:-admin}"
+                        GRAFANA_PASSWORD="${GRAFANA_PASSWORD:-zsp359742}"
+                        INDEX_DATE="$(date -u +%Y.%m.%d)"
+                        INDEX_NAME="${V14_KIBANA_INDEX_PREFIX}-${INDEX_DATE}"
+                        export INDEX_NAME
+                        cat > reports/v14-observability-import/mapping.json <<'JSON'
+{
+  "mappings": {
+    "properties": {
+      "@timestamp": { "type": "date" },
+      "pipeline_version": { "type": "keyword" },
+      "type": { "type": "keyword" },
+      "build": { "type": "keyword" },
+      "job": { "type": "keyword" },
+      "category": { "type": "keyword" },
+      "status": { "type": "keyword" },
+      "layer": { "type": "keyword" },
+      "name": { "type": "keyword" },
+      "key": { "type": "keyword" },
+      "node": { "type": "keyword" },
+      "source": { "type": "keyword" },
+      "message": { "type": "text", "fields": { "keyword": { "type": "keyword", "ignore_above": 256 } } },
+      "score": { "type": "double" },
+      "risk_score": { "type": "double" },
+      "health_score": { "type": "double" },
+      "recovery_score": { "type": "double" },
+      "observability_score": { "type": "double" },
+      "severity": { "type": "double" },
+      "priority": { "type": "long" },
+      "ready": { "type": "boolean" }
+    }
+  }
+}
+JSON
+                        curl -fsS -X PUT "${ES_URL}/${INDEX_NAME}" -H 'Content-Type: application/json' --data-binary @reports/v14-observability-import/mapping.json -o reports/v14-observability-import/create-index.json || true
+                        node - <<'NODE'
+const fs = require('fs');
+const crypto = require('crypto');
+const index = process.env.INDEX_NAME;
+const input = fs.readFileSync('reports/v14-observability.ndjson','utf8').split('\n').filter(Boolean);
+const out = [];
+input.forEach((line, i) => {
+  const doc = JSON.parse(line);
+  const source = [doc.pipeline_version, doc.build, doc.type, doc.category, doc.name, doc.key, i].join('|');
+  const id = crypto.createHash('sha1').update(source).digest('hex');
+  out.push(JSON.stringify({ index: { _index: index, _id: id } }));
+  out.push(JSON.stringify(doc));
+});
+fs.writeFileSync('reports/v14-observability-import/bulk.ndjson', out.join('\n') + '\n');
+console.log('v14_bulk_events=' + input.length);
+NODE
+                        curl -fsS -X POST "${ES_URL}/_bulk?refresh=true" -H 'Content-Type: application/x-ndjson' --data-binary @reports/v14-observability-import/bulk.ndjson -o reports/v14-observability-import/bulk-result.json
+                        node -e "const r=JSON.parse(require('fs').readFileSync('reports/v14-observability-import/bulk-result.json','utf8')); if(r.errors){console.error(JSON.stringify(r.items.filter(i=>(i.index||{}).error).slice(0,5),null,2)); process.exit(1)} console.log('bulk_took_ms='+r.took)"
+                        curl -fsS "${ES_URL}/${INDEX_NAME}/_count" -o reports/v14-observability-import/count.json
+                        cat > reports/v14-observability-import/data-view.json <<EOF2
+{"attributes":{"title":"${V14_KIBANA_INDEX_PREFIX}-*","timeFieldName":"@timestamp"}}
+EOF2
+                        curl -fsS -X POST "${KB_URL}/api/saved_objects/index-pattern/${V14_KIBANA_INDEX_PREFIX}?overwrite=true" -H 'kbn-xsrf: true' -H 'Content-Type: application/json' --data-binary @reports/v14-observability-import/data-view.json -o reports/v14-observability-import/kibana-data-view.json || true
+                        curl -fsS -X POST "${KB_URL}/api/saved_objects/_import?overwrite=true" -H 'kbn-xsrf: true' -F file=@reports/v14-kibana-dashboard.ndjson -o reports/v14-observability-import/kibana-saved-object-import.json || true
+                        cat > reports/v14-observability-import/grafana-v14-datasource.json <<EOF2
+{"name":"Jenkins V14 Intelligence Elasticsearch","uid":"jenkins-v14-intelligence-es","type":"elasticsearch","access":"proxy","url":"${ES_URL}","basicAuth":false,"isDefault":false,"jsonData":{"esVersion":"8.0.0","index":"${V14_KIBANA_INDEX_PREFIX}-*","timeField":"@timestamp","logMessageField":"message","logLevelField":"severity"}}
+EOF2
+                        if curl -fsS "${GRAFANA_URL%/}/api/datasources/uid/jenkins-v14-intelligence-es" -u "${GRAFANA_USER}:${GRAFANA_PASSWORD}" -o reports/v14-observability-import/grafana-v14-datasource-existing.json; then
+                          curl -fsS -X PUT "${GRAFANA_URL%/}/api/datasources/uid/jenkins-v14-intelligence-es" -u "${GRAFANA_USER}:${GRAFANA_PASSWORD}" -H 'Content-Type: application/json' --data-binary @reports/v14-observability-import/grafana-v14-datasource.json -o reports/v14-observability-import/grafana-v14-datasource-result.json
+                        else
+                          curl -fsS -X POST "${GRAFANA_URL%/}/api/datasources" -u "${GRAFANA_USER}:${GRAFANA_PASSWORD}" -H 'Content-Type: application/json' --data-binary @reports/v14-observability-import/grafana-v14-datasource.json -o reports/v14-observability-import/grafana-v14-datasource-result.json
+                        fi
+                        node - <<'NODE'
+const fs = require('fs');
+const dashboard = JSON.parse(fs.readFileSync('reports/v14-grafana-dashboard.json','utf8'));
+dashboard.id = null;
+dashboard.version = Number(dashboard.version || 1) + 1;
+fs.writeFileSync('reports/v14-observability-import/grafana-import-payload.json', JSON.stringify({ dashboard, folderUid: '', overwrite: true, message: 'Jenkins V14 intelligence import build ' + (process.env.BUILD_NUMBER || 'unknown') }, null, 2));
+NODE
+                        curl -fsS -X POST "${GRAFANA_URL%/}/api/dashboards/db" -u "${GRAFANA_USER}:${GRAFANA_PASSWORD}" -H 'Content-Type: application/json' --data-binary @reports/v14-observability-import/grafana-import-payload.json -o reports/v14-observability-import/grafana-dashboard-import.json
+                        node -e "const r=JSON.parse(require('fs').readFileSync('reports/v14-observability-import/grafana-dashboard-import.json','utf8')); if(!r.uid||!r.url){console.error(JSON.stringify(r,null,2)); process.exit(1)} console.log('grafana_dashboard_uid='+r.uid); console.log('grafana_dashboard_url='+r.url)"
+                    '''
+                }
+
+                stage('V14.93 发布 V14 Hypergrid 前端') {
+                    if (env.V14_PUBLISH_PORTAL == 'true') {
+                        sh '''
+                            set -eux
+                            cat > reports/v14-portal/Dockerfile <<'DOCKERFILE'
+FROM 127.0.0.1:30050/library/nginx-alpine:1.29.7-alpine
+RUN rm -f /etc/nginx/conf.d/default.conf
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY index.html evidence.json /usr/share/nginx/html/
+EXPOSE 80
+DOCKERFILE
+                            cat > reports/v14-portal/nginx.conf <<'NGINX'
+server {
+  listen 80;
+  root /usr/share/nginx/html;
+  index index.html;
+  add_header X-Platform-Intelligence "v14" always;
+  add_header Cache-Control "no-store" always;
+  location / { try_files $uri $uri/ /index.html; }
+  location = /evidence.json { default_type application/json; }
+}
+NGINX
+                            IMAGE="127.0.0.1:30050/platform-intelligence-v14:${GIT_COMMIT_ID}"
+                            docker build --network none --label app.name=platform-intelligence-v14 --label pipeline.version=v14 --label git.commit=${GIT_COMMIT_ID} -t "$IMAGE" reports/v14-portal
+                            docker push "$IMAGE"
+                            cat > reports/v14-portal/k8s.yaml <<EOF2
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ${V14_PORTAL_SERVICE_NAME}
+  namespace: ${V14_PORTAL_NAMESPACE}
+  labels:
+    app.kubernetes.io/name: ${V14_PORTAL_APP_LABEL}
+    app.kubernetes.io/part-of: platform-intelligence
+    app.kubernetes.io/component: evidence-portal
+    pipeline-version: v14
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ${V14_PORTAL_APP_LABEL}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ${V14_PORTAL_APP_LABEL}
+        app.kubernetes.io/part-of: platform-intelligence
+        app.kubernetes.io/component: evidence-portal
+        pipeline-version: v14
+    spec:
+      containers:
+        - name: portal
+          image: ${IMAGE}
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 96Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ${V14_PORTAL_SERVICE_NAME}
+  namespace: ${V14_PORTAL_NAMESPACE}
+  labels:
+    app.kubernetes.io/name: ${V14_PORTAL_APP_LABEL}
+    app.kubernetes.io/part-of: platform-intelligence
+    pipeline-version: v14
+spec:
+  type: NodePort
+  selector:
+    app.kubernetes.io/name: ${V14_PORTAL_APP_LABEL}
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+      nodePort: ${V14_PORTAL_NODEPORT}
+EOF2
+                            kubectl apply -f reports/v14-portal/k8s.yaml
+                            kubectl -n ${V14_PORTAL_NAMESPACE} rollout status deploy/${V14_PORTAL_SERVICE_NAME} --timeout=120s
+                        '''
+                    } else {
+                        sh "echo 'V14_PUBLISH_PORTAL=false' > reports/v14-portal/publish.disabled"
+                    }
+                }
+
+                stage('V14.94 V14 成果验证') {
+                    sh '''
+                        set -eu
+                        curl -fsS --max-time 15 "http://192.168.1.58:${V14_PORTAL_NODEPORT}/" | grep -q 'v14-intelligence-hypergrid-20260601'
+                        curl -fsS --max-time 15 "http://192.168.1.58:${V14_PORTAL_NODEPORT}/evidence.json" | grep -q 'intelligenceScore'
+                        curl -fsS --max-time 25 "https://${CLOUDFLARE_PUBLIC_HOSTNAME}/" | grep -q 'v14-intelligence-hypergrid-20260601'
+                        kubectl get deploy,svc -n ${V14_PORTAL_NAMESPACE} -l app.kubernetes.io/name=${V14_PORTAL_APP_LABEL} -o wide | tee reports/v14-portal/k8s-live.txt
+                    '''
+                }
+
+                stage('V14.95 最终结论与归档') {
+                    sh '''
+                        set -eu
+                        cat > reports/v14-release-verdict.json <<EOF2
+{
+  "pipeline": "Jenkinsfile-intelligence-v14",
+  "inherits": "Jenkinsfile-epoch-v13",
+  "build": "${BUILD_NUMBER}",
+  "commit": "${GIT_COMMIT_ID}",
+  "internal_portal": "http://192.168.1.58:${V14_PORTAL_NODEPORT}/",
+  "public_portal": "https://${CLOUDFLARE_PUBLIC_HOSTNAME}/",
+  "grafana_uid": "zhanglab-v14-platform-intelligence",
+  "kibana_index_prefix": "${V14_KIBANA_INDEX_PREFIX}",
+  "stage_plan_count": "$(wc -l < reports/v14-stage-plan.txt | tr -d ' ')",
+  "mutation_policy": "no data deletion, no pvc deletion, no backup deletion, no cluster reset"
+}
+EOF2
+                        cat reports/v14-release-verdict.json
+                    '''
+                }
+            } catch (err) {
+                currentBuild.result = 'FAILURE'
+                throw err
+            } finally {
+                archiveArtifacts allowEmptyArchive: true, artifacts: 'meta/**,reports/**', fingerprint: true
+                cleanWs(deleteDirs: true, disableDeferredWipeout: true, notFailBuild: true)
+            }
+        }
+    }
+}
+
+if (env.NODE_NAME) {
+    runV14()
+} else {
+    node {
+        runV14()
+    }
+}

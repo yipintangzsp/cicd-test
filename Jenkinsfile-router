@@ -2,6 +2,7 @@
 // historical Jenkinsfile selectable, newest first.
 
 def pipelineVersions = [
+    'Jenkinsfile-intelligence-v14',
     'Jenkinsfile-epoch-v13',
     'Jenkinsfile-expert-v12',
     'Jenkinsfile-expert-v11',
@@ -42,9 +43,18 @@ properties([
         string(name: 'V13_GRAFANA_DASHBOARD_TITLE', defaultValue: 'ZhangLab V13 Governance Era', description: '[v13] Grafana dashboard title.'),
         string(name: 'V13_KIBANA_INDEX_PREFIX', defaultValue: 'jenkins-v13-governance', description: '[v13] Kibana/Elasticsearch index prefix.'),
         string(name: 'V13_PORTAL_NAMESPACE', defaultValue: 'ns-apps', description: '[v13] Evidence portal namespace.'),
-        string(name: 'V13_PORTAL_NODEPORT', defaultValue: '30087', description: '[v13] Existing public portal NodePort.'),
+        string(name: 'V13_PORTAL_NODEPORT', defaultValue: '30089', description: '[v13] Existing public portal NodePort.'),
         booleanParam(name: 'V13_REQUIRE_CLOUDFLARE_PUBLICATION', defaultValue: true, description: '[v13] Fail when Cloudflare public portal cannot be verified.'),
         booleanParam(name: 'V13_REQUIRE_NO_IDLE_CORE_SERVICE', defaultValue: false, description: '[v13] Fail when suspicious idle core service is found.'),
+        booleanParam(name: 'V14_PUBLISH_PORTAL', defaultValue: true, description: '[v14] Publish the V14 platform intelligence hypergrid portal.'),
+        booleanParam(name: 'V14_IMPORT_OBSERVABILITY_ASSETS', defaultValue: true, description: '[v14] Import V14 Elasticsearch, Kibana and Grafana intelligence assets.'),
+        booleanParam(name: 'V14_STRICT_RISK_GATE', defaultValue: false, description: '[v14] Keep false unless you want high-risk findings to fail the build.'),
+        string(name: 'V14_GRAFANA_DASHBOARD_TITLE', defaultValue: 'ZhangLab V14 Platform Intelligence', description: '[v14] Grafana dashboard title.'),
+        string(name: 'V14_KIBANA_INDEX_PREFIX', defaultValue: 'jenkins-v14-intelligence', description: '[v14] Kibana/Elasticsearch index prefix.'),
+        string(name: 'V14_PORTAL_NAMESPACE', defaultValue: 'ns-apps', description: '[v14] Portal namespace.'),
+        string(name: 'V14_PORTAL_SERVICE_NAME', defaultValue: 'platform-era-v13-portal', description: '[v14] Reuse the current public portal service unless intentionally separated.'),
+        string(name: 'V14_PORTAL_APP_LABEL', defaultValue: 'platform-era-v13-portal', description: '[v14] Portal pod label used by the service selector.'),
+        string(name: 'V14_PORTAL_NODEPORT', defaultValue: '30089', description: '[v14] Public portal NodePort behind Cloudflare.'),
         string(name: 'CLOUDFLARE_PUBLIC_HOSTNAME', defaultValue: 'platform.heil.ccwu.cc', description: '[v13] Cloudflare public hostname.'),
         string(name: 'CLOUDFLARE_TUNNEL_SECRET', defaultValue: 'cloudflare-v11-tunnel-token', description: '[v13] Kubernetes Secret containing Cloudflare Tunnel token.'),
         string(name: 'CLOUDFLARE_TUNNEL_IMAGE', defaultValue: '127.0.0.1:30050/library/cloudflared:2026.5.0', description: '[v13] Pinned local Cloudflare Tunnel image.')
@@ -54,7 +64,7 @@ properties([
 node {
     stage('Select GitHub Jenkinsfile') {
         checkout scm
-        def rawSelected = (params.PIPELINE_VERSION ?: 'Jenkinsfile-epoch-v13').trim()
+        def rawSelected = (params.PIPELINE_VERSION ?: 'Jenkinsfile-intelligence-v14').trim()
         def selected = rawSelected == 'Jenkinsfile' ? 'Jenkinsfile-epoch-v13' : rawSelected
         if (!pipelineVersions.contains(selected)) {
             error "Unsupported PIPELINE_VERSION: ${selected}"
