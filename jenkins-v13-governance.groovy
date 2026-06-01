@@ -451,8 +451,8 @@ if (!result.uid || !result.url) {
   console.error(JSON.stringify(result, null, 2));
   throw new Error('Grafana dashboard import did not return uid/url');
 }
-console.log(`grafana_dashboard_uid=${result.uid}`);
-console.log(`grafana_dashboard_url=${result.url}`);
+console.log('grafana_dashboard_uid=' + result.uid);
+console.log('grafana_dashboard_url=' + result.url);
 NODE
 
           echo "Imported v13 observability events into \${INDEX_NAME}, refreshed Kibana saved objects and published Grafana dashboard ${grafanaTitle}." | tee reports/v13-observability-import/import.enabled
