@@ -574,7 +574,7 @@ function legacyVis(id, title, visType, aggs, kql = 'pipeline_version : v13', par
           mode: visType === 'metric' ? 'number' : undefined,
           percentageMode: false,
           valueAxes: visType === 'line' || visType === 'histogram' ? [{ id: 'ValueAxis-1', type: 'value', position: 'left', show: true, scale: { type: 'linear' }, labels: { show: true }, title: { text: '' } }] : undefined,
-          categoryAxes: visType === 'line' || visType === 'histogram' ? [{ id: 'CategoryAxis-1', type: 'category', position: 'bottom', show: true, scale: { type: 'linear' }, labels: { show: true, truncate: 100 }, title: {} }] : undefined,
+          categoryAxes: visType === 'line' || visType === 'histogram' ? [{ id: 'CategoryAxis-1', type: 'category', position: 'bottom', show: true, scale: { type: 'linear' }, labels: { show: true }, title: {} }] : undefined,
           seriesParams: visType === 'line' || visType === 'histogram' ? [{ show: true, type: visType === 'line' ? 'line' : 'histogram', mode: 'normal', data: { label: title, id: '1' }, valueAxis: 'ValueAxis-1', drawLinesBetweenPoints: true, showCircles: true }] : undefined,
           ...params,
         },
