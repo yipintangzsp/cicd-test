@@ -380,10 +380,13 @@ NGINX
                             IMAGE="127.0.0.1:30050/platform-intelligence-v14:${GIT_COMMIT_ID}"
                             docker build --network none --label app.name=platform-intelligence-v14 --label pipeline.version=v14 --label git.commit=${GIT_COMMIT_ID} -t "$IMAGE" reports/v14-portal
                             docker push "$IMAGE"
-                            # Keep the Cloudflare origin alive even when the k3s NodePort is unhealthy.
-                            docker rm -f zhanglab-v14-portal-fallback >/dev/null 2>&1 || true
-                            docker run -d --name zhanglab-v14-portal-fallback --restart unless-stopped -p 127.0.0.1:30090:80 "$IMAGE" >/tmp/zhanglab-v14-portal-fallback.cid
-                            docker ps --filter name=zhanglab-v14-portal-fallback --format '{{.Names}} {{.Status}} {{.Ports}}' | tee reports/v14-portal/fallback-container.txt
+                            start_fallback() {
+                              reason="$1"
+                              echo "starting public fallback on 127.0.0.1:30090 because ${reason}" | tee reports/v14-portal/fallback.reason
+                              docker rm -f zhanglab-v14-portal-fallback >/dev/null 2>&1 || true
+                              docker run -d --name zhanglab-v14-portal-fallback --restart unless-stopped -p 127.0.0.1:30090:80 "$IMAGE" >/tmp/zhanglab-v14-portal-fallback.cid
+                              docker ps --filter name=zhanglab-v14-portal-fallback --format '{{.Names}} {{.Status}} {{.Ports}}' | tee reports/v14-portal/fallback-container.txt
+                            }
                             cat > reports/v14-portal/k8s.yaml <<EOF2
 apiVersion: apps/v1
 kind: Deployment
@@ -454,11 +457,13 @@ EOF2
                                 test "$attempt" != "5"
                               done
                               if ! kubectl -n ${V14_PORTAL_NAMESPACE} rollout status deploy/${V14_PORTAL_SERVICE_NAME} --timeout=300s; then
-                                echo "k8s rollout did not complete; public fallback container remains active on 127.0.0.1:30090" | tee reports/v14-portal/k8s-rollout-fallback.warning
+                                echo "k8s rollout did not complete; public fallback container will serve 127.0.0.1:30090" | tee reports/v14-portal/k8s-rollout-fallback.warning
+                                start_fallback "k8s rollout timeout"
                               fi
                             else
                               cp /tmp/v14-k8s-readyz.txt reports/v14-portal/k8s-readyz.failed.txt || true
-                              echo "k8s API not ready; public fallback container remains active on 127.0.0.1:30090" | tee reports/v14-portal/k8s-notready-fallback.warning
+                              echo "k8s API not ready; public fallback container will serve 127.0.0.1:30090" | tee reports/v14-portal/k8s-notready-fallback.warning
+                              start_fallback "k8s readyz failed"
                             fi
                         '''
                     } else {
