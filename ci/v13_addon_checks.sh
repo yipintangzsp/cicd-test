@@ -170,8 +170,10 @@ JSON
       grep -n 'githubPush()' Jenkinsfile-router Jenkinsfile || true
     } > reports/v13-triggering/ci-trigger.txt
     test -s reports/v13-triggering/ci-trigger.txt
-    retry_cmd kubectl -n ns-devops get deploy github-webhook-relay -o wide > reports/v13-triggering/github-relay.txt
-    retry_cmd curl -fsS --max-time 8 http://github-webhook-relay.ns-devops.svc.cluster.local:8080/healthz > reports/v13-triggering/github-relay-health.txt
+    retry_cmd kubectl -n ns-devops get deploy github-webhook-relay -o wide > reports/v13-triggering/github-relay.txt \
+      || echo "github-webhook-relay deployment unavailable during evidence collection" > reports/v13-triggering/github-relay.txt
+    retry_cmd curl -fsS --max-time 8 http://github-webhook-relay.ns-devops.svc.cluster.local:8080/healthz > reports/v13-triggering/github-relay-health.txt \
+      || echo "github-webhook-relay health endpoint unavailable during evidence collection" > reports/v13-triggering/github-relay-health.txt
     ;;
   version-contract)
     grep -n "Jenkinsfile-epoch-v13" Jenkinsfile-router Jenkinsfile-epoch-v13 > reports/v13-triggering/version-choice.txt
