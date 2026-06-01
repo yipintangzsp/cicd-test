@@ -1,13 +1,13 @@
 {
   "summary": {
-    "timestamp": "2026-05-26T21:01:17Z",
-    "job": "v13-test",
-    "build": "42",
-    "semver": "0.0.42",
-    "commit": "test123",
+    "timestamp": "2026-06-01T00:36:27Z",
+    "job": "github-cicd-test",
+    "build": "90",
+    "semver": "0.0.90",
+    "commit": "b959dbc",
     "pipelineVersion": "v13",
     "publicUrl": "https://platform.heil.ccwu.cc/",
-    "portalUrl": "http://192.168.1.58:30087/",
+    "portalUrl": "http://192.168.1.58:30089/",
     "podTotal": 2,
     "podReady": 2,
     "podAttention": 0,
@@ -33,7 +33,7 @@
     "sparkProbeTotal": 0,
     "platformHealthScore": 78,
     "governanceGate": "PASS",
-    "sloAvailabilityPercent": 90,
+    "sloAvailabilityPercent": null,
     "layerCount": 6,
     "riskEventTotal": 3,
     "criticalRiskEvents": 0
@@ -424,22 +424,32 @@
   "governance": {
     "epochCharter": {
       "version": "v13",
-      "era": "governance"
+      "era": "governance",
+      "inherits_from": "v12",
+      "non_destructive_default": true,
+      "purpose": [
+        "daily-platform-patrol",
+        "slo-baseline",
+        "backup-and-restore-evidence",
+        "capacity-runway",
+        "release-governance"
+      ],
+      "forbidden_without_explicit_approval": [
+        "delete-pvc",
+        "delete-backup",
+        "reset-cluster",
+        "prune-images",
+        "scale-stateful-to-zero"
+      ]
     },
     "backupInventory": {
-      "pvcCount": 5,
-      "pvCount": 3,
-      "redactedSecretInventory": true
+      "pvcCount": 0,
+      "pvCount": 0,
+      "redactedSecretInventory": true,
+      "mode": "inventory-only-no-delete-no-copy"
     },
-    "restoreDrill": {
-      "verdict": "dry-run-pass",
-      "mode": "evidence-only"
-    },
-    "sloBudget": {
-      "serviceProbeTotal": 20,
-      "serviceProbeOk": 18,
-      "availabilityPercent": 90
-    },
+    "restoreDrill": {},
+    "sloBudget": {},
     "capacityRunway": {
       "nodes": [
         {
@@ -451,17 +461,18 @@
     },
     "releaseGate": {
       "pass": true,
-      "checks": {
-        "slo": true,
-        "backupInventory": true,
-        "restoreDryRun": true
-      }
+      "mode": "PASS"
     },
     "v14Backlog": {
+      "version": "v14-candidates",
       "items": [
-        "feature-a"
+        "automated-restore-drill-in-isolated-namespace",
+        "capacity-trend-from-prometheus-history",
+        "release-risk-score-with-change-diff",
+        "service-owner-slo-page",
+        "backup-age-and-size-attestation"
       ],
-      "rule": "keep-small"
+      "rule": "do-not-increase-script-complexity-unless-it-improves-operability"
     }
   }
 }

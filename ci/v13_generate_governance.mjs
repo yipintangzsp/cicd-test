@@ -387,37 +387,172 @@ metrics.push('# TYPE cicd_v13_risk_event_severity gauge');
 for (const row of riskEvents.slice(0, 30)) metrics.push(`cicd_v13_risk_event_severity{category="${metricLabel(row.category)}",layer="${metricLabel(row.layer)}",namespace="${metricLabel(row.namespace)}",name="${metricLabel(row.name)}",build="${metricLabel(build)}"} ${row.severity}`);
 write('reports/v13-prometheus-metrics.prom', metrics.join('\n') + '\n');
 
+const prometheusDs = { type: 'prometheus', uid: 'prometheus' };
+const elasticDs = { type: 'elasticsearch', uid: 'jenkins-v13-governance-es' };
+const graphThresholds = {
+  mode: 'absolute',
+  steps: [
+    { color: 'red', value: null },
+    { color: 'orange', value: 70 },
+    { color: 'green', value: 90 },
+  ],
+};
+function promTarget(expr, legendFormat = '', refId = 'A', format = 'time_series') {
+  return {
+    refId,
+    datasource: prometheusDs,
+    expr,
+    legendFormat,
+    format,
+    interval: '',
+  };
+}
+function panel(type, title, x, y, w, h, targets, options = {}) {
+  return {
+    type,
+    title,
+    datasource: options.datasource || prometheusDs,
+    gridPos: { x, y, w, h },
+    targets,
+    description: options.description || '',
+    fieldConfig: {
+      defaults: {
+        unit: options.unit || 'short',
+        min: options.min,
+        max: options.max,
+        decimals: options.decimals,
+        thresholds: options.thresholds || graphThresholds,
+        color: options.color || { mode: 'palette-classic' },
+        custom: options.custom || {},
+      },
+      overrides: options.overrides || [],
+    },
+    options: options.panelOptions || {},
+  };
+}
+function statPanel(title, x, y, w, h, expr, options = {}) {
+  return panel('stat', title, x, y, w, h, [promTarget(expr, options.legend || title)], {
+    ...options,
+    panelOptions: {
+      colorMode: 'background',
+      graphMode: 'area',
+      justifyMode: 'center',
+      orientation: 'auto',
+      reduceOptions: { calcs: ['lastNotNull'], fields: '', values: false },
+      textMode: 'auto',
+      wideLayout: true,
+      ...options.panelOptions,
+    },
+  });
+}
+function textPanel(title, x, y, w, h, content) {
+  return {
+    type: 'text',
+    title,
+    datasource: null,
+    gridPos: { x, y, w, h },
+    options: {
+      mode: 'markdown',
+      content,
+    },
+  };
+}
+function esTarget(query, refId = 'A') {
+  return {
+    refId,
+    datasource: elasticDs,
+    query,
+    metrics: [{ id: '1', type: 'count' }],
+    bucketAggs: [
+      { id: '2', type: 'date_histogram', field: '@timestamp', settings: { interval: '30m', min_doc_count: 0 } },
+    ],
+    timeField: '@timestamp',
+  };
+}
+
 const grafana = {
   title: grafanaTitle,
-  tags: ['jenkins', 'v13', 'platform', 'spark'],
+  uid: 'zhanglab-v13-observability-command',
+  tags: ['jenkins', 'v13', 'platform', 'spark', 'kibana', 'dynamic-command-center'],
   timezone: 'browser',
   schemaVersion: 39,
-  version: 1,
-  refresh: '30s',
+  version: 2,
+  refresh: '15s',
+  liveNow: true,
+  editable: true,
+  time: { from: 'now-24h', to: 'now' },
+  links: [
+    { title: 'V13 Portal', url: `https://${publicHost}/`, targetBlank: true, icon: 'external link' },
+    { title: 'Kibana V13 Command', url: 'http://192.168.1.58:30061/app/dashboards#/view/jenkins-v13-governance-evidence', targetBlank: true, icon: 'dashboard' },
+  ],
+  templating: {
+    list: [
+      { name: 'namespace', type: 'query', datasource: prometheusDs, query: 'label_values(kube_pod_status_ready{condition="true"}, namespace)', includeAll: true, multi: true, current: { text: 'All', value: '$__all' }, refresh: 2, sort: 1 },
+      { name: 'node', type: 'query', datasource: prometheusDs, query: 'label_values(kube_node_status_condition{condition="Ready"}, node)', includeAll: true, multi: true, current: { text: 'All', value: '$__all' }, refresh: 2, sort: 1 },
+      { name: 'layer', type: 'custom', query: 'cluster-core,devops-control,data-platform,observability,application,platform-support', includeAll: true, multi: true, current: { text: 'All', value: '$__all' }, sort: 1 },
+      { name: 'build', type: 'custom', query: `${build}`, includeAll: false, multi: false, current: { text: build, value: build }, sort: 3 },
+    ],
+  },
+  annotations: {
+    list: [
+      {
+        builtIn: 1,
+        datasource: { type: 'grafana', uid: '-- Grafana --' },
+        enable: true,
+        hide: true,
+        iconColor: 'rgba(0, 211, 255, 1)',
+        name: 'Annotations & Alerts',
+        type: 'dashboard',
+      },
+    ],
+  },
   panels: [
-    { type: 'stat', title: 'Platform Health Score', gridPos: { x: 0, y: 0, w: 4, h: 4 }, targets: [{ expr: 'cicd_v13_platform_health_score' }] },
-    { type: 'stat', title: 'Ready Pods', gridPos: { x: 4, y: 0, w: 4, h: 4 }, targets: [{ expr: 'sum(cicd_v13_pod_ready)' }] },
-    { type: 'stat', title: 'Service Probes OK', gridPos: { x: 8, y: 0, w: 4, h: 4 }, targets: [{ expr: 'sum(cicd_v13_service_probe_ok)' }] },
-    { type: 'stat', title: 'Spark Ready', gridPos: { x: 12, y: 0, w: 4, h: 4 }, targets: [{ expr: 'sum(cicd_v13_spark_component_ready)' }] },
-    { type: 'stat', title: 'Risk Events', gridPos: { x: 16, y: 0, w: 4, h: 4 }, targets: [{ expr: 'count(cicd_v13_risk_event_severity)' }] },
-    { type: 'stat', title: 'Ready Nodes', gridPos: { x: 20, y: 0, w: 4, h: 4 }, targets: [{ expr: 'sum(cicd_v13_node_ready)' }] },
-    { type: 'gauge', title: 'Layer Health Gauge', gridPos: { x: 0, y: 4, w: 8, h: 8 }, targets: [{ expr: 'avg(cicd_v13_layer_health_score)' }] },
-    { type: 'bargauge', title: 'Layer Health Ranking', gridPos: { x: 8, y: 4, w: 16, h: 8 }, targets: [{ expr: 'cicd_v13_layer_health_score' }] },
-    { type: 'timeseries', title: 'Pod Readiness By Namespace', gridPos: { x: 0, y: 12, w: 12, h: 8 }, targets: [{ expr: 'sum by(namespace) (cicd_v13_pod_ready)' }] },
-    { type: 'timeseries', title: 'Service Probe OK By Group', gridPos: { x: 12, y: 12, w: 12, h: 8 }, targets: [{ expr: 'sum by(group) (cicd_v13_service_probe_ok)' }] },
-    { type: 'barchart', title: 'Restart Hotspots', gridPos: { x: 0, y: 20, w: 12, h: 8 }, targets: [{ expr: 'topk(20, cicd_v13_pod_restarts)' }] },
-    { type: 'barchart', title: 'Risk Severity Hotspots', gridPos: { x: 12, y: 20, w: 12, h: 8 }, targets: [{ expr: 'topk(20, cicd_v13_risk_event_severity)' }] },
-    { type: 'table', title: 'Spark Components', gridPos: { x: 0, y: 28, w: 12, h: 8 }, targets: [{ expr: 'cicd_v13_spark_component_ready' }] },
-    { type: 'barchart', title: 'Recruitment Capability Fit', gridPos: { x: 12, y: 28, w: 12, h: 8 }, targets: [{ expr: 'cicd_v13_market_capability_score' }] },
-    { type: 'table', title: 'Service Probe Detail', gridPos: { x: 0, y: 36, w: 12, h: 8 }, targets: [{ expr: 'cicd_v13_service_probe_ok' }] },
-    { type: 'table', title: 'Layer Health Detail', gridPos: { x: 12, y: 36, w: 12, h: 8 }, targets: [{ expr: 'cicd_v13_layer_health_score' }] },
-    { type: 'stat', title: 'Full Pod Coverage Ratio', gridPos: { x: 0, y: 44, w: 6, h: 4 }, targets: [{ expr: 'cicd_v13_pod_coverage_ratio' }] },
-    { type: 'table', title: 'Full Pod Coverage Records', gridPos: { x: 6, y: 44, w: 18, h: 8 }, targets: [{ expr: 'cicd_v13_pod_coverage' }] },
+    textPanel('V13 Dynamic Command Brief', 0, 0, 24, 3, `### ZhangLab V13 Observability Command Center\n\n**Build #${build} · ${semver} · commit ${commit}**  \n15 秒自动刷新，联动 Prometheus + Elasticsearch/Kibana，覆盖 Pod、Service、Spark、风险、招聘能力、数据链路与发布证据。`),
+    statPanel('Live Health', 0, 3, 4, 4, '100 * sum(kube_pod_status_ready{condition="true",namespace=~"$namespace"} == 1) / count(kube_pod_status_ready{condition="true",namespace=~"$namespace"})', { unit: 'percent', min: 0, max: 100, decimals: 0 }),
+    statPanel('Pods Ready', 4, 3, 4, 4, 'sum(kube_pod_status_ready{condition="true",namespace=~"$namespace"} == 1)', { decimals: 0 }),
+    statPanel('Services Covered', 8, 3, 4, 4, 'count(kube_service_info{namespace=~"$namespace"})', { decimals: 0 }),
+    statPanel('Spark Ready', 12, 3, 4, 4, 'sum(kube_pod_status_ready{condition="true",pod=~".*spark.*"} == 1)', { decimals: 0, color: { mode: 'thresholds' } }),
+    statPanel('Pods Not Ready', 16, 3, 4, 4, 'count(kube_pod_status_ready{condition="true",namespace=~"$namespace"} == 0)', { decimals: 0, thresholds: { mode: 'absolute', steps: [{ color: 'green', value: null }, { color: 'orange', value: 1 }, { color: 'red', value: 5 }] } }),
+    statPanel('24h Restarts', 20, 3, 4, 4, 'sum(increase(kube_pod_container_status_restarts_total{namespace=~"$namespace"}[24h]))', { decimals: 0 }),
+
+    panel('gauge', 'Live Readiness Energy Core', 0, 7, 8, 8, [promTarget('100 * sum(kube_pod_status_ready{condition="true",namespace=~"$namespace"} == 1) / count(kube_pod_status_ready{condition="true",namespace=~"$namespace"})', 'live readiness')], { unit: 'percent', min: 0, max: 100, panelOptions: { reduceOptions: { calcs: ['lastNotNull'], fields: '', values: false }, showThresholdLabels: true, showThresholdMarkers: true } }),
+    panel('bargauge', 'Namespace Readiness Ranking', 8, 7, 16, 8, [promTarget('100 * sum by(namespace) (kube_pod_status_ready{condition="true",namespace=~"$namespace"} == 1) / count by(namespace) (kube_pod_status_ready{condition="true",namespace=~"$namespace"})', '{{namespace}}')], { unit: 'percent', min: 0, max: 100, panelOptions: { displayMode: 'gradient', orientation: 'horizontal', reduceOptions: { calcs: ['lastNotNull'], fields: '', values: false }, showUnfilled: true } }),
+
+    panel('timeseries', 'Live Health Pulse', 0, 15, 12, 8, [promTarget('100 * sum(kube_pod_status_ready{condition="true",namespace=~"$namespace"} == 1) / count(kube_pod_status_ready{condition="true",namespace=~"$namespace"})', 'health')], { unit: 'percent', min: 0, max: 100, custom: { drawStyle: 'line', lineInterpolation: 'smooth', fillOpacity: 28, gradientMode: 'hue', lineWidth: 3, showPoints: 'never' } }),
+    panel('timeseries', 'Pod Readiness By Namespace', 12, 15, 12, 8, [promTarget('sum by(namespace) (kube_pod_status_ready{condition="true",namespace=~"$namespace"} == 1)', '{{namespace}}')], { decimals: 0, custom: { drawStyle: 'bars', fillOpacity: 55, gradientMode: 'opacity', lineWidth: 2, showPoints: 'never', stacking: { mode: 'normal', group: 'A' } } }),
+
+    panel('state-timeline', 'Pod State Timeline', 0, 23, 12, 8, [promTarget('kube_pod_status_ready{condition="true",namespace=~"$namespace"}', '{{namespace}}/{{pod}}')], { min: 0, max: 1, panelOptions: { mergeValues: true, showValue: 'always', alignValue: 'center', rowHeight: 0.8 } }),
+    panel('status-history', 'Node And Spark Availability Wall', 12, 23, 12, 8, [
+      promTarget('kube_node_status_condition{condition="Ready",status="true",node=~"$node"}', 'node {{node}}', 'A'),
+      promTarget('kube_pod_status_ready{condition="true",pod=~".*spark.*"}', 'spark {{pod}}', 'B'),
+    ], { min: 0, max: 1, panelOptions: { showValue: 'never', rowHeight: 0.85 } }),
+
+    panel('barchart', 'Restart Hotspots', 0, 31, 12, 8, [promTarget('topk(25, sum by(namespace,pod) (increase(kube_pod_container_status_restarts_total{namespace=~"$namespace"}[24h])))', '{{namespace}}/{{pod}}', 'A', 'table')], { decimals: 0, panelOptions: { orientation: 'horizontal', xTickLabelRotation: 0, xTickLabelSpacing: 0, showValue: 'always', stacking: 'none' } }),
+    panel('heatmap', 'Restart Pressure Heatmap', 12, 31, 12, 8, [promTarget('sum by(namespace) (increase(kube_pod_container_status_restarts_total{namespace=~"$namespace"}[24h]))', '{{namespace}}')], { custom: { hideFrom: { tooltip: false, viz: false, legend: false } }, panelOptions: { calculate: true, cellGap: 2, color: { mode: 'scheme', scheme: 'Spectral', steps: 64 }, yAxis: { axisPlacement: 'left' } } }),
+
+    panel('piechart', 'Not Ready Share By Namespace', 0, 39, 8, 7, [promTarget('sum by(namespace) (kube_pod_status_ready{condition="true",namespace=~"$namespace"} == 0)', '{{namespace}}', 'A', 'table')], { panelOptions: { displayLabels: ['name', 'percent'], legend: { displayMode: 'table', placement: 'right', values: ['value', 'percent'] }, pieType: 'donut', reduceOptions: { calcs: ['lastNotNull'], fields: '', values: false } } }),
+    panel('piechart', 'Ready Pod Share By Namespace', 8, 39, 8, 7, [promTarget('sum by(namespace) (kube_pod_status_ready{condition="true",namespace=~"$namespace"} == 1)', '{{namespace}}', 'A', 'table')], { panelOptions: { displayLabels: ['name', 'percent'], legend: { displayMode: 'table', placement: 'right', values: ['value', 'percent'] }, pieType: 'donut', reduceOptions: { calcs: ['lastNotNull'], fields: '', values: false } } }),
+    panel('barchart', 'Deployment Availability', 16, 39, 8, 7, [promTarget('kube_deployment_status_replicas_available{namespace=~"$namespace"}', '{{namespace}}/{{deployment}}', 'A', 'table')], { decimals: 0, panelOptions: { orientation: 'horizontal', showValue: 'always' } }),
+
+    panel('table', 'Service Inventory Matrix', 0, 46, 12, 9, [promTarget('kube_service_info{namespace=~"$namespace"}', '{{namespace}}/{{service}}', 'A', 'table')], { decimals: 0, panelOptions: { showHeader: true, sortBy: [{ desc: false, displayName: 'Value' }] } }),
+    panel('table', 'Pod Readiness And Placement', 12, 46, 12, 9, [promTarget('kube_pod_status_ready{condition="true",namespace=~"$namespace"}', '{{namespace}}/{{pod}}', 'A', 'table')], { decimals: 0, panelOptions: { showHeader: true } }),
+
+    panel('table', 'Deployment Detail Drilldown', 0, 55, 8, 8, [promTarget('kube_deployment_status_replicas_available{namespace=~"$namespace"}', '{{namespace}}/{{deployment}}', 'A', 'table')], { decimals: 0 }),
+    panel('table', 'Spark Component Drilldown', 8, 55, 8, 8, [promTarget('kube_pod_status_ready{condition="true",pod=~".*spark.*"}', '{{namespace}}/{{pod}}', 'A', 'table')], { decimals: 0 }),
+    panel('table', 'Node Condition Drilldown', 16, 55, 8, 8, [promTarget('kube_node_status_condition{node=~"$node"}', '{{node}}/{{condition}}/{{status}}', 'A', 'table')], { decimals: 0 }),
+
+    panel('timeseries', 'Elasticsearch Imported V13 Events', 0, 63, 12, 8, [esTarget('pipeline_version:v13')], { datasource: elasticDs, decimals: 0, custom: { drawStyle: 'bars', fillOpacity: 65, gradientMode: 'opacity' } }),
+    panel('timeseries', 'Kibana Risk Events Trend', 12, 63, 12, 8, [esTarget('pipeline_version:v13 AND type:risk_event')], { datasource: elasticDs, decimals: 0, custom: { drawStyle: 'line', lineInterpolation: 'smooth', fillOpacity: 30, gradientMode: 'hue' } }),
+
+    panel('bargauge', 'Service Inventory Distribution', 0, 71, 12, 8, [promTarget('count by(namespace) (kube_service_info{namespace=~"$namespace"})', '{{namespace}}')], { decimals: 0, panelOptions: { displayMode: 'lcd', orientation: 'horizontal', showUnfilled: true } }),
+    panel('bargauge', 'Node Readiness', 12, 71, 12, 8, [promTarget('kube_node_status_condition{condition="Ready",status="true",node=~"$node"}', '{{node}}')], { min: 0, max: 1, decimals: 0, panelOptions: { displayMode: 'gradient', orientation: 'horizontal' } }),
+
+    textPanel('Operational Links', 0, 79, 24, 3, `- Public portal: https://${publicHost}/\n- Internal V13 portal: http://192.168.1.58:${portalNodePort}/\n- Kibana: http://192.168.1.58:30061\n- Grafana: http://192.168.1.58:30084\n- Evidence source: Jenkins build #${build}`),
   ],
 };
 write('reports/v13-grafana-dashboard.json', JSON.stringify(grafana, null, 2));
 
-function legacyVis(id, title, visType, aggs, kql = 'pipeline_version : v13') {
+function legacyVis(id, title, visType, aggs, kql = 'pipeline_version : v13', params = {}) {
   return {
     type: 'visualization',
     id: `${kibanaIndexPrefix}-${id}`,
@@ -432,9 +567,16 @@ function legacyVis(id, title, visType, aggs, kql = 'pipeline_version : v13') {
           addLegend: true,
           legendPosition: 'right',
           isDonut: visType === 'pie',
+          perPage: 12,
+          showPartialRows: false,
+          showMetricsAtAllLevels: false,
           type: visType === 'histogram' ? 'histogram' : undefined,
           mode: visType === 'metric' ? 'number' : undefined,
           percentageMode: false,
+          valueAxes: visType === 'line' || visType === 'histogram' ? [{ id: 'ValueAxis-1', type: 'value', position: 'left', show: true, scale: { type: 'linear' }, labels: { show: true }, title: { text: '' } }] : undefined,
+          categoryAxes: visType === 'line' || visType === 'histogram' ? [{ id: 'CategoryAxis-1', type: 'category', position: 'bottom', show: true, scale: { type: 'linear' }, labels: { show: true, truncate: 100 }, title: {} }] : undefined,
+          seriesParams: visType === 'line' || visType === 'histogram' ? [{ show: true, type: visType === 'line' ? 'line' : 'histogram', mode: 'normal', data: { label: title, id: '1' }, valueAxis: 'ValueAxis-1', drawLinesBetweenPoints: true, showCircles: true }] : undefined,
+          ...params,
         },
         aggs,
       }),
@@ -461,30 +603,48 @@ function legacyVis(id, title, visType, aggs, kql = 'pipeline_version : v13') {
 const metricAgg = { id: '1', enabled: true, type: 'count', schema: 'metric', params: {} };
 const avgHealthAgg = { id: '1', enabled: true, type: 'avg', schema: 'metric', params: { field: 'health_score' } };
 const avgRiskAgg = { id: '1', enabled: true, type: 'avg', schema: 'metric', params: { field: 'risk_score' } };
+const avgSeverityAgg = { id: '1', enabled: true, type: 'avg', schema: 'metric', params: { field: 'severity' } };
+const avgScoreAgg = { id: '1', enabled: true, type: 'avg', schema: 'metric', params: { field: 'score' } };
+const avgRestartsAgg = { id: '1', enabled: true, type: 'avg', schema: 'metric', params: { field: 'restarts' } };
+const avgEndpointAgg = { id: '1', enabled: true, type: 'avg', schema: 'metric', params: { field: 'endpointReady' } };
 const termsAgg = (id, field, schema = 'segment', size = 12) => ({ id, enabled: true, type: 'terms', schema, params: { field, orderBy: '1', order: 'desc', size, otherBucket: false, missingBucket: false } });
 const dateAgg = { id: '2', enabled: true, type: 'date_histogram', schema: 'segment', params: { field: '@timestamp', timeRange: { from: 'now-24h', to: 'now' }, useNormalizedEsInterval: true, scaleMetricValues: false, interval: 'auto', drop_partials: false, min_doc_count: 1, extended_bounds: {} } };
 const kibanaVisualizations = [
   legacyVis('platform-health-metric', 'V13 平台综合健康分', 'metric', [avgHealthAgg], 'type : platform_summary'),
   legacyVis('result-donut', '流水线与服务状态占比', 'pie', [metricAgg, termsAgg('2', 'pipeline_result_key', 'segment', 10)]),
   legacyVis('layer-health-bars', '平台层级健康评分', 'histogram', [avgHealthAgg, termsAgg('2', 'layer', 'segment', 10)], 'type : layer_summary'),
-  legacyVis('risk-severity-bars', '风险事件严重度排行', 'histogram', [avgRiskAgg, termsAgg('2', 'category', 'segment', 10)], 'type : risk_event'),
+  legacyVis('risk-severity-bars', '风险事件严重度排行', 'histogram', [avgSeverityAgg, termsAgg('2', 'category', 'segment', 10)], 'type : risk_event'),
+  legacyVis('risk-layer-donut', '风险层级分布', 'pie', [metricAgg, termsAgg('2', 'layer', 'segment', 8)], 'type : risk_event'),
   legacyVis('probe-group-bars', '服务探针分组成功度', 'histogram', [avgHealthAgg, termsAgg('2', 'group', 'segment', 12)], 'type : service_probe'),
   legacyVis('namespace-health-bars', '命名空间健康评分', 'histogram', [avgHealthAgg, termsAgg('2', 'namespace', 'segment', 16)], 'type : namespace_summary'),
-  legacyVis('capability-fit-bars', '招聘高频能力覆盖评分', 'histogram', [avgHealthAgg, termsAgg('2', 'capability', 'segment', 12)], 'type : capability_fit'),
+  legacyVis('service-endpoint-bars', '服务 Endpoint Ready 分布', 'histogram', [avgEndpointAgg, termsAgg('2', 'name', 'segment', 18)], 'type : service'),
+  legacyVis('restart-hotspots-bars', 'Pod 重启热点排行', 'histogram', [avgRestartsAgg, termsAgg('2', 'name', 'segment', 18)], 'type : pod'),
+  legacyVis('capability-fit-bars', '招聘高频能力覆盖评分', 'histogram', [avgScoreAgg, termsAgg('2', 'capability', 'segment', 12)], 'type : capability_fit'),
+  legacyVis('capability-coverage-donut', '能力覆盖状态占比', 'pie', [metricAgg, termsAgg('2', 'coverage', 'segment', 6)], 'type : capability_fit'),
   legacyVis('health-trend', '健康分时间趋势', 'line', [avgHealthAgg, dateAgg], 'type : platform_summary or type : layer_summary'),
+  legacyVis('risk-trend', '风险分时间趋势', 'line', [avgRiskAgg, dateAgg], 'type : risk_event or type : platform_summary'),
+  legacyVis('spark-status-donut', 'Spark 与数据平台状态', 'pie', [metricAgg, termsAgg('2', 'pipeline_result_key', 'segment', 8)], 'layer : data-platform or namespace : *spark* or group : *spark*'),
   legacyVis('pod-coverage-metric', '全 Pod 覆盖率', 'metric', [avgHealthAgg], 'type : pod_coverage_summary'),
+  legacyVis('node-ready-donut', 'Node Ready 状态', 'pie', [metricAgg, termsAgg('2', 'pipeline_result_key', 'segment', 6)], 'type : node'),
+  legacyVis('http-status-donut', 'HTTP 探针状态码占比', 'pie', [metricAgg, termsAgg('2', 'http_status', 'segment', 10)], 'type : service_probe'),
+  legacyVis('latest-records-table', '最新 V13 观测记录', 'table', [metricAgg, termsAgg('2', 'type', 'bucket', 12), termsAgg('3', 'pipeline_result_key', 'bucket', 8), termsAgg('4', 'layer', 'bucket', 8)], 'pipeline_version : v13'),
+  legacyVis('service-probe-table', '服务探针明细矩阵', 'table', [metricAgg, termsAgg('2', 'group', 'bucket', 12), termsAgg('3', 'namespace', 'bucket', 12), termsAgg('4', 'name', 'bucket', 20), termsAgg('5', 'status', 'bucket', 5)], 'type : service_probe'),
+  legacyVis('pod-evidence-table', 'Pod 证据明细矩阵', 'table', [metricAgg, termsAgg('2', 'namespace', 'bucket', 12), termsAgg('3', 'name', 'bucket', 20), termsAgg('4', 'node', 'bucket', 10), termsAgg('5', 'pipeline_result_key', 'bucket', 6)], 'type : pod'),
+  legacyVis('governance-gate-metric', '治理发布门禁证据', 'metric', [metricAgg], 'type : governance_gate'),
 ];
 function dashboardPanel(object, index) {
+  const columns = 3;
+  const width = 16;
   return {
   version: '8.0.0',
   panelIndex: String(index + 1),
   panelRefName: `panel_${index}`,
   embeddableConfig: {},
   gridData: {
-    x: (index % 2) * 24,
-    y: Math.floor(index / 2) * 15,
-    w: 24,
-    h: 15,
+    x: (index % columns) * width,
+    y: Math.floor(index / columns) * 14,
+    w: width,
+    h: 14,
     i: String(index + 1),
   },
   };
@@ -502,7 +662,7 @@ function dashboardObject(id, title, description, visualizations, kql) {
       timeRestore: true,
       timeTo: 'now',
       timeFrom: 'now-24h',
-      refreshInterval: { pause: false, value: 60000 },
+      refreshInterval: { pause: false, value: 30000 },
       kibanaSavedObjectMeta: { searchSourceJSON: JSON.stringify({ query: { language: 'kuery', query: kql }, filter: [] }) },
     },
     references: visualizations.map((object, index) => ({
@@ -516,22 +676,52 @@ const overviewVisualizations = kibanaVisualizations;
 const riskVisualizations = [
   kibanaVisualizations[0],
   kibanaVisualizations[3],
-  kibanaVisualizations[5],
-  kibanaVisualizations[7],
+  kibanaVisualizations[4],
+  kibanaVisualizations[12],
   kibanaVisualizations[1],
   kibanaVisualizations[2],
-  kibanaVisualizations[4],
+  kibanaVisualizations[5],
   kibanaVisualizations[6],
+  kibanaVisualizations[8],
+  kibanaVisualizations[16],
+  kibanaVisualizations[18],
 ];
 const dataFlowVisualizations = [
   kibanaVisualizations[0],
   kibanaVisualizations[2],
-  kibanaVisualizations[4],
+  kibanaVisualizations[5],
+  kibanaVisualizations[9],
+  kibanaVisualizations[11],
+  kibanaVisualizations[1],
+  kibanaVisualizations[3],
+  kibanaVisualizations[13],
+  kibanaVisualizations[17],
+];
+const sparkVisualizations = [
+  kibanaVisualizations[13],
+  kibanaVisualizations[5],
+  kibanaVisualizations[7],
+  kibanaVisualizations[11],
+  kibanaVisualizations[17],
+  kibanaVisualizations[18],
+];
+const serviceVisualizations = [
+  kibanaVisualizations[5],
   kibanaVisualizations[6],
   kibanaVisualizations[7],
-  kibanaVisualizations[1],
-  kibanaVisualizations[5],
-  kibanaVisualizations[3],
+  kibanaVisualizations[8],
+  kibanaVisualizations[15],
+  kibanaVisualizations[17],
+  kibanaVisualizations[18],
+  kibanaVisualizations[19],
+];
+const marketVisualizations = [
+  kibanaVisualizations[9],
+  kibanaVisualizations[10],
+  kibanaVisualizations[0],
+  kibanaVisualizations[2],
+  kibanaVisualizations[11],
+  kibanaVisualizations[16],
 ];
 const kibanaObjects = [
   {
@@ -541,9 +731,12 @@ const kibanaObjects = [
     references: [],
   },
   ...kibanaVisualizations,
-  dashboardObject('evidence', `${grafanaTitle} · Command`, 'V13 command dashboard with health score, layer status, probes, capability fit and trend.', overviewVisualizations, 'pipeline_version : v13'),
-  dashboardObject('risk-response', `${grafanaTitle} · Risk Response`, 'Focused risk dashboard for failed probes, restart hotspots, endpoint gaps and namespace attention.', riskVisualizations, 'pipeline_version : v13 and (type : risk_event or type : namespace_summary or type : service_probe or type : platform_summary)'),
-  dashboardObject('data-flow', `${grafanaTitle} · Data Flow`, 'Focused data platform dashboard for Spark, Kafka, Flink, Airflow, Trino, Superset and MinIO evidence.', dataFlowVisualizations, 'pipeline_version : v13 and (layer : data-platform or type : capability_fit or type : platform_summary)'),
+  dashboardObject('evidence', `${grafanaTitle} · Neon Command`, 'V13 dynamic command dashboard with health score, layer status, probes, capability fit, timelines and service matrices.', overviewVisualizations, 'pipeline_version : v13'),
+  dashboardObject('risk-response', `${grafanaTitle} · Risk Radar`, 'Focused risk dashboard for failed probes, restart hotspots, endpoint gaps and namespace attention.', riskVisualizations, 'pipeline_version : v13 and (type : risk_event or type : namespace_summary or type : service_probe or type : platform_summary or type : pod)'),
+  dashboardObject('data-flow', `${grafanaTitle} · Data Flow Reactor`, 'Focused data platform dashboard for Spark, Kafka, Flink, Airflow, Trino, Superset and MinIO evidence.', dataFlowVisualizations, 'pipeline_version : v13 and (layer : data-platform or type : capability_fit or type : platform_summary or type : service_probe)'),
+  dashboardObject('spark-command', `${grafanaTitle} · Spark Command`, 'Spark and big-data service command view.', sparkVisualizations, 'pipeline_version : v13 and (layer : data-platform or namespace : *spark* or group : *spark*)'),
+  dashboardObject('service-matrix', `${grafanaTitle} · Service Matrix`, 'Full service, pod, endpoint, probe and namespace matrix.', serviceVisualizations, 'pipeline_version : v13 and (type : service or type : service_probe or type : pod or type : namespace_summary or type : node)'),
+  dashboardObject('market-fit', `${grafanaTitle} · Market Fit`, 'Recruitment-demand capability coverage and platform maturity view.', marketVisualizations, 'pipeline_version : v13 and (type : capability_fit or type : platform_summary or type : layer_summary)'),
 ];
 write('reports/v13-kibana-dashboard.ndjson', kibanaObjects.map((object) => JSON.stringify(object)).join('\n') + '\n');
 

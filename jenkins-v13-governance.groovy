@@ -242,6 +242,9 @@ EOF2
         if [ "${importAssets}" = "true" ]; then
           ES_URL="\${ELASTICSEARCH_URL:-http://elasticsearch.default.svc.cluster.local:9200}"
           KB_URL="\${KIBANA_INTERNAL_URL:-http://kibana-service.default.svc.cluster.local:5601}"
+          GRAFANA_URL="\${GRAFANA_URL:-http://kube-stack-grafana.monitoring.svc.cluster.local}"
+          GRAFANA_USER="\${GRAFANA_USER:-admin}"
+          GRAFANA_PASSWORD="\${GRAFANA_PASSWORD:-zsp359742}"
           resolve_cluster_url() {
             url="\$1"
             case "\$url" in
@@ -267,6 +270,7 @@ EOF2
           }
           ES_URL="\$(resolve_cluster_url "\$ES_URL")"
           KB_URL="\$(resolve_cluster_url "\$KB_URL")"
+          GRAFANA_URL="\$(resolve_cluster_url "\$GRAFANA_URL")"
           INDEX_DATE="\$(date -u +%Y.%m.%d)"
           INDEX_NAME="${kibanaIndexPrefix}-\${INDEX_DATE}"
           export INDEX_NAME
@@ -385,7 +389,73 @@ EOF3
             cat reports/v13-observability-import/kibana-saved-object-import.json
           fi
 
-          echo "Imported v13 observability events into \${INDEX_NAME} and refreshed Kibana data view ${kibanaIndexPrefix}." | tee reports/v13-observability-import/import.enabled
+          cat > reports/v13-observability-import/grafana-v13-datasource.json <<EOF3
+{
+  "name": "Jenkins V13 Governance Elasticsearch",
+  "uid": "jenkins-v13-governance-es",
+  "type": "elasticsearch",
+  "access": "proxy",
+  "url": "\${ES_URL}",
+  "basicAuth": false,
+  "isDefault": false,
+  "jsonData": {
+    "esVersion": "8.0.0",
+    "index": "${kibanaIndexPrefix}-*",
+    "timeField": "@timestamp",
+    "logMessageField": "message",
+    "logLevelField": "risk.severity"
+  }
+}
+EOF3
+          if curl -fsS "\${GRAFANA_URL%/}/api/datasources/uid/jenkins-v13-governance-es" \
+            -u "\${GRAFANA_USER}:\${GRAFANA_PASSWORD}" \
+            -o reports/v13-observability-import/grafana-v13-datasource-existing.json; then
+            curl -fsS -X PUT "\${GRAFANA_URL%/}/api/datasources/uid/jenkins-v13-governance-es" \
+              -u "\${GRAFANA_USER}:\${GRAFANA_PASSWORD}" \
+              -H 'Content-Type: application/json' \
+              --data-binary @reports/v13-observability-import/grafana-v13-datasource.json \
+              -o reports/v13-observability-import/grafana-v13-datasource-result.json
+          else
+            curl -fsS -X POST "\${GRAFANA_URL%/}/api/datasources" \
+              -u "\${GRAFANA_USER}:\${GRAFANA_PASSWORD}" \
+              -H 'Content-Type: application/json' \
+              --data-binary @reports/v13-observability-import/grafana-v13-datasource.json \
+              -o reports/v13-observability-import/grafana-v13-datasource-result.json
+          fi
+          cat reports/v13-observability-import/grafana-v13-datasource-result.json
+
+          node - <<'NODE'
+const fs = require('fs');
+const dashboard = JSON.parse(fs.readFileSync('reports/v13-grafana-dashboard.json', 'utf8'));
+dashboard.id = null;
+dashboard.uid = dashboard.uid || 'zhanglab-v13-observability-command';
+dashboard.version = Number(dashboard.version || 1) + 1;
+const payload = {
+  dashboard,
+  folderUid: '',
+  overwrite: true,
+  message: `Jenkins V13 observability import build ${process.env.BUILD_NUMBER || 'unknown'}`,
+};
+fs.writeFileSync('reports/v13-observability-import/grafana-import-payload.json', JSON.stringify(payload, null, 2));
+NODE
+          curl -fsS -X POST "\${GRAFANA_URL%/}/api/dashboards/db" \
+            -u "\${GRAFANA_USER}:\${GRAFANA_PASSWORD}" \
+            -H 'Content-Type: application/json' \
+            --data-binary @reports/v13-observability-import/grafana-import-payload.json \
+            -o reports/v13-observability-import/grafana-dashboard-import.json
+          cat reports/v13-observability-import/grafana-dashboard-import.json
+          node - <<'NODE'
+const fs = require('fs');
+const result = JSON.parse(fs.readFileSync('reports/v13-observability-import/grafana-dashboard-import.json', 'utf8'));
+if (!result.uid || !result.url) {
+  console.error(JSON.stringify(result, null, 2));
+  throw new Error('Grafana dashboard import did not return uid/url');
+}
+console.log(`grafana_dashboard_uid=${result.uid}`);
+console.log(`grafana_dashboard_url=${result.url}`);
+NODE
+
+          echo "Imported v13 observability events into \${INDEX_NAME}, refreshed Kibana saved objects and published Grafana dashboard ${grafanaTitle}." | tee reports/v13-observability-import/import.enabled
         else
           echo "V13_IMPORT_OBSERVABILITY_ASSETS=false; generated files are ready for Grafana/Kibana import." | tee reports/v13-observability-import/import.disabled
         fi
@@ -464,13 +534,16 @@ const dashboard = JSON.parse(fs.readFileSync('reports/v13-grafana-dashboard.json
 const failures = [];
 if (!dashboard.title) failures.push('missing title');
 if (dashboard.title !== '${expectedTitle}') failures.push(`title mismatch: \${dashboard.title}`);
-if (!Array.isArray(dashboard.panels) || dashboard.panels.length < 16) failures.push('expected at least 16 enhanced panels');
+if (!Array.isArray(dashboard.panels) || dashboard.panels.length < 28) failures.push('expected at least 28 enhanced panels');
 const expressions = JSON.stringify(dashboard.panels);
-if (!expressions.includes('cicd_v13_pod_ready')) failures.push('missing pod readiness metric');
-if (!expressions.includes('cicd_v13_service_probe_ok')) failures.push('missing service probe metric');
-if (!expressions.includes('cicd_v13_platform_health_score')) failures.push('missing platform health score metric');
-if (!expressions.includes('cicd_v13_layer_health_score')) failures.push('missing layer health score metric');
-if (!expressions.includes('cicd_v13_risk_event_severity')) failures.push('missing risk severity metric');
+if (!expressions.includes('kube_pod_status_ready')) failures.push('missing live pod readiness metric');
+if (!expressions.includes('kube_service_info')) failures.push('missing live service inventory metric');
+if (!expressions.includes('kube_node_status_condition')) failures.push('missing live node condition metric');
+if (!expressions.includes('kube_deployment_status_replicas_available')) failures.push('missing live deployment availability metric');
+if (!expressions.includes('pipeline_version:v13')) failures.push('missing V13 Elasticsearch evidence query');
+if (!expressions.includes('jenkins-v13-governance-es')) failures.push('missing V13 Elasticsearch datasource panels');
+if (!expressions.includes('state-timeline')) failures.push('missing dynamic state timeline panel');
+if (!expressions.includes('status-history')) failures.push('missing dynamic status history panel');
 console.log(`title=\${dashboard.title}`);
 console.log(`panel_count=\${dashboard.panels.length}`);
 if (failures.length) {
@@ -490,7 +563,7 @@ def lintV13KibanaSavedObjects(String kibanaIndexPrefix) {
 const fs = require('fs');
 const lines = fs.readFileSync('reports/v13-kibana-dashboard.ndjson', 'utf8').split('\\n').filter(Boolean);
 if (!lines.length) throw new Error('empty kibana saved object file');
-if (lines.length < 9) throw new Error('expected enhanced Kibana saved objects, got ' + lines.length);
+if (lines.length < 24) throw new Error('expected enhanced Kibana saved objects, got ' + lines.length);
 let visualizationCount = 0;
 let maxDashboardPanels = 0;
 let dashboardCount = 0;
@@ -513,7 +586,7 @@ console.log(`observability_events=\${events.length}`);
 console.log(`service_probe_events=\${probeEvents}`);
 console.log('kibana_index_prefix=${kibanaIndexPrefix}');
 if (probeEvents < 1) throw new Error('missing service_probe events for Kibana');
-if (visualizationCount < 8 || dashboardCount < 3 || maxDashboardPanels < 8) throw new Error('Kibana dashboard is not enhanced enough');
+if (visualizationCount < 18 || dashboardCount < 6 || maxDashboardPanels < 12) throw new Error('Kibana dashboard is not enhanced enough');
 console.log('kibana_saved_object_lint=ok');
 NODE
     """

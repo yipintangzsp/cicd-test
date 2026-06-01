@@ -1,285 +1,1899 @@
 {
   "title": "ZhangLab V13 Governance Era",
+  "uid": "zhanglab-v13-observability-command",
   "tags": [
     "jenkins",
     "v13",
     "platform",
-    "spark"
+    "spark",
+    "kibana",
+    "dynamic-command-center"
   ],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 1,
-  "refresh": "30s",
+  "version": 2,
+  "refresh": "15s",
+  "liveNow": true,
+  "editable": true,
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "links": [
+    {
+      "title": "V13 Portal",
+      "url": "https://platform.heil.ccwu.cc/",
+      "targetBlank": true,
+      "icon": "external link"
+    },
+    {
+      "title": "Kibana V13 Command",
+      "url": "http://192.168.1.58:30061/app/dashboards#/view/jenkins-v13-governance-evidence",
+      "targetBlank": true,
+      "icon": "dashboard"
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "namespace",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "query": "label_values(kube_pod_status_ready{condition=\"true\"}, namespace)",
+        "includeAll": true,
+        "multi": true,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "refresh": 2,
+        "sort": 1
+      },
+      {
+        "name": "node",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "query": "label_values(kube_node_status_condition{condition=\"Ready\"}, node)",
+        "includeAll": true,
+        "multi": true,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "refresh": 2,
+        "sort": 1
+      },
+      {
+        "name": "layer",
+        "type": "custom",
+        "query": "cluster-core,devops-control,data-platform,observability,application,platform-support",
+        "includeAll": true,
+        "multi": true,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "sort": 1
+      },
+      {
+        "name": "build",
+        "type": "custom",
+        "query": "90",
+        "includeAll": false,
+        "multi": false,
+        "current": {
+          "text": "90",
+          "value": "90"
+        },
+        "sort": 3
+      }
+    ]
+  },
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
   "panels": [
     {
-      "type": "stat",
-      "title": "Platform Health Score",
+      "type": "text",
+      "title": "V13 Dynamic Command Brief",
+      "datasource": null,
       "gridPos": {
         "x": 0,
         "y": 0,
+        "w": 24,
+        "h": 3
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "### ZhangLab V13 Observability Command Center\n\n**Build #90 · 0.0.90 · commit b959dbc**  \n15 秒自动刷新，联动 Prometheus + Elasticsearch/Kibana，覆盖 Pod、Service、Spark、风险、招聘能力、数据链路与发布证据。"
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Live Health",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 3,
         "w": 4,
         "h": 4
       },
       "targets": [
         {
-          "expr": "cicd_v13_platform_health_score"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "100 * sum(kube_pod_status_ready{condition=\"true\",namespace=~\"$namespace\"} == 1) / count(kube_pod_status_ready{condition=\"true\",namespace=~\"$namespace\"})",
+          "legendFormat": "Live Health",
+          "format": "time_series",
+          "interval": ""
         }
-      ]
+      ],
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 70
+              },
+              {
+                "color": "green",
+                "value": 90
+              }
+            ]
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "wideLayout": true
+      }
     },
     {
       "type": "stat",
-      "title": "Ready Pods",
+      "title": "Pods Ready",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "gridPos": {
         "x": 4,
-        "y": 0,
+        "y": 3,
         "w": 4,
         "h": 4
       },
       "targets": [
         {
-          "expr": "sum(cicd_v13_pod_ready)"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(kube_pod_status_ready{condition=\"true\",namespace=~\"$namespace\"} == 1)",
+          "legendFormat": "Pods Ready",
+          "format": "time_series",
+          "interval": ""
         }
-      ]
+      ],
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 70
+              },
+              {
+                "color": "green",
+                "value": 90
+              }
+            ]
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "wideLayout": true
+      }
     },
     {
       "type": "stat",
-      "title": "Service Probes OK",
+      "title": "Services Covered",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "gridPos": {
         "x": 8,
-        "y": 0,
+        "y": 3,
         "w": 4,
         "h": 4
       },
       "targets": [
         {
-          "expr": "sum(cicd_v13_service_probe_ok)"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "count(kube_service_info{namespace=~\"$namespace\"})",
+          "legendFormat": "Services Covered",
+          "format": "time_series",
+          "interval": ""
         }
-      ]
+      ],
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 70
+              },
+              {
+                "color": "green",
+                "value": 90
+              }
+            ]
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "wideLayout": true
+      }
     },
     {
       "type": "stat",
       "title": "Spark Ready",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "gridPos": {
         "x": 12,
-        "y": 0,
+        "y": 3,
         "w": 4,
         "h": 4
       },
       "targets": [
         {
-          "expr": "sum(cicd_v13_spark_component_ready)"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(kube_pod_status_ready{condition=\"true\",pod=~\".*spark.*\"} == 1)",
+          "legendFormat": "Spark Ready",
+          "format": "time_series",
+          "interval": ""
         }
-      ]
+      ],
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 70
+              },
+              {
+                "color": "green",
+                "value": 90
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          },
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "wideLayout": true
+      }
     },
     {
       "type": "stat",
-      "title": "Risk Events",
+      "title": "Pods Not Ready",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "gridPos": {
         "x": 16,
-        "y": 0,
+        "y": 3,
         "w": 4,
         "h": 4
       },
       "targets": [
         {
-          "expr": "count(cicd_v13_risk_event_severity)"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "count(kube_pod_status_ready{condition=\"true\",namespace=~\"$namespace\"} == 0)",
+          "legendFormat": "Pods Not Ready",
+          "format": "time_series",
+          "interval": ""
         }
-      ]
+      ],
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
+            ]
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "wideLayout": true
+      }
     },
     {
       "type": "stat",
-      "title": "Ready Nodes",
+      "title": "24h Restarts",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "gridPos": {
         "x": 20,
-        "y": 0,
+        "y": 3,
         "w": 4,
         "h": 4
       },
       "targets": [
         {
-          "expr": "sum(cicd_v13_node_ready)"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\"}[24h]))",
+          "legendFormat": "24h Restarts",
+          "format": "time_series",
+          "interval": ""
         }
-      ]
+      ],
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 70
+              },
+              {
+                "color": "green",
+                "value": 90
+              }
+            ]
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "wideLayout": true
+      }
     },
     {
       "type": "gauge",
-      "title": "Layer Health Gauge",
+      "title": "Live Readiness Energy Core",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "gridPos": {
         "x": 0,
-        "y": 4,
+        "y": 7,
         "w": 8,
         "h": 8
       },
       "targets": [
         {
-          "expr": "avg(cicd_v13_layer_health_score)"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "100 * sum(kube_pod_status_ready{condition=\"true\",namespace=~\"$namespace\"} == 1) / count(kube_pod_status_ready{condition=\"true\",namespace=~\"$namespace\"})",
+          "legendFormat": "live readiness",
+          "format": "time_series",
+          "interval": ""
         }
-      ]
+      ],
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 70
+              },
+              {
+                "color": "green",
+                "value": 90
+              }
+            ]
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showThresholdLabels": true,
+        "showThresholdMarkers": true
+      }
     },
     {
       "type": "bargauge",
-      "title": "Layer Health Ranking",
+      "title": "Namespace Readiness Ranking",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "gridPos": {
         "x": 8,
-        "y": 4,
+        "y": 7,
         "w": 16,
         "h": 8
       },
       "targets": [
         {
-          "expr": "cicd_v13_layer_health_score"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "100 * sum by(namespace) (kube_pod_status_ready{condition=\"true\",namespace=~\"$namespace\"} == 1) / count by(namespace) (kube_pod_status_ready{condition=\"true\",namespace=~\"$namespace\"})",
+          "legendFormat": "{{namespace}}",
+          "format": "time_series",
+          "interval": ""
         }
-      ]
+      ],
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 70
+              },
+              {
+                "color": "green",
+                "value": 90
+              }
+            ]
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "options": {
+        "displayMode": "gradient",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showUnfilled": true
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Live Health Pulse",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 15,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "100 * sum(kube_pod_status_ready{condition=\"true\",namespace=~\"$namespace\"} == 1) / count(kube_pod_status_ready{condition=\"true\",namespace=~\"$namespace\"})",
+          "legendFormat": "health",
+          "format": "time_series",
+          "interval": ""
+        }
+      ],
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 70
+              },
+              {
+                "color": "green",
+                "value": 90
+              }
+            ]
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "fillOpacity": 28,
+            "gradientMode": "hue",
+            "lineWidth": 3,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {}
     },
     {
       "type": "timeseries",
       "title": "Pod Readiness By Namespace",
-      "gridPos": {
-        "x": 0,
-        "y": 12,
-        "w": 12,
-        "h": 8
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       },
-      "targets": [
-        {
-          "expr": "sum by(namespace) (cicd_v13_pod_ready)"
-        }
-      ]
-    },
-    {
-      "type": "timeseries",
-      "title": "Service Probe OK By Group",
       "gridPos": {
         "x": 12,
-        "y": 12,
+        "y": 15,
         "w": 12,
         "h": 8
       },
       "targets": [
         {
-          "expr": "sum by(group) (cicd_v13_service_probe_ok)"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by(namespace) (kube_pod_status_ready{condition=\"true\",namespace=~\"$namespace\"} == 1)",
+          "legendFormat": "{{namespace}}",
+          "format": "time_series",
+          "interval": ""
         }
-      ]
+      ],
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 70
+              },
+              {
+                "color": "green",
+                "value": 90
+              }
+            ]
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 55,
+            "gradientMode": "opacity",
+            "lineWidth": 2,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "type": "state-timeline",
+      "title": "Pod State Timeline",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 23,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "kube_pod_status_ready{condition=\"true\",namespace=~\"$namespace\"}",
+          "legendFormat": "{{namespace}}/{{pod}}",
+          "format": "time_series",
+          "interval": ""
+        }
+      ],
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 70
+              },
+              {
+                "color": "green",
+                "value": 90
+              }
+            ]
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "options": {
+        "mergeValues": true,
+        "showValue": "always",
+        "alignValue": "center",
+        "rowHeight": 0.8
+      }
+    },
+    {
+      "type": "status-history",
+      "title": "Node And Spark Availability Wall",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 23,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "kube_node_status_condition{condition=\"Ready\",status=\"true\",node=~\"$node\"}",
+          "legendFormat": "node {{node}}",
+          "format": "time_series",
+          "interval": ""
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "kube_pod_status_ready{condition=\"true\",pod=~\".*spark.*\"}",
+          "legendFormat": "spark {{pod}}",
+          "format": "time_series",
+          "interval": ""
+        }
+      ],
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 70
+              },
+              {
+                "color": "green",
+                "value": 90
+              }
+            ]
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "options": {
+        "showValue": "never",
+        "rowHeight": 0.85
+      }
     },
     {
       "type": "barchart",
       "title": "Restart Hotspots",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "gridPos": {
         "x": 0,
-        "y": 20,
+        "y": 31,
         "w": 12,
         "h": 8
       },
       "targets": [
         {
-          "expr": "topk(20, cicd_v13_pod_restarts)"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "topk(25, sum by(namespace,pod) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\"}[24h])))",
+          "legendFormat": "{{namespace}}/{{pod}}",
+          "format": "table",
+          "interval": ""
         }
-      ]
+      ],
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 70
+              },
+              {
+                "color": "green",
+                "value": 90
+              }
+            ]
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "horizontal",
+        "xTickLabelRotation": 0,
+        "xTickLabelSpacing": 0,
+        "showValue": "always",
+        "stacking": "none"
+      }
+    },
+    {
+      "type": "heatmap",
+      "title": "Restart Pressure Heatmap",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 31,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by(namespace) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\"}[24h]))",
+          "legendFormat": "{{namespace}}",
+          "format": "time_series",
+          "interval": ""
+        }
+      ],
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 70
+              },
+              {
+                "color": "green",
+                "value": 90
+              }
+            ]
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "hideFrom": {
+              "tooltip": false,
+              "viz": false,
+              "legend": false
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "calculate": true,
+        "cellGap": 2,
+        "color": {
+          "mode": "scheme",
+          "scheme": "Spectral",
+          "steps": 64
+        },
+        "yAxis": {
+          "axisPlacement": "left"
+        }
+      }
+    },
+    {
+      "type": "piechart",
+      "title": "Not Ready Share By Namespace",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 39,
+        "w": 8,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by(namespace) (kube_pod_status_ready{condition=\"true\",namespace=~\"$namespace\"} == 0)",
+          "legendFormat": "{{namespace}}",
+          "format": "table",
+          "interval": ""
+        }
+      ],
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 70
+              },
+              {
+                "color": "green",
+                "value": 90
+              }
+            ]
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "options": {
+        "displayLabels": [
+          "name",
+          "percent"
+        ],
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "values": [
+            "value",
+            "percent"
+          ]
+        },
+        "pieType": "donut",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      }
+    },
+    {
+      "type": "piechart",
+      "title": "Ready Pod Share By Namespace",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 39,
+        "w": 8,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by(namespace) (kube_pod_status_ready{condition=\"true\",namespace=~\"$namespace\"} == 1)",
+          "legendFormat": "{{namespace}}",
+          "format": "table",
+          "interval": ""
+        }
+      ],
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 70
+              },
+              {
+                "color": "green",
+                "value": 90
+              }
+            ]
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "options": {
+        "displayLabels": [
+          "name",
+          "percent"
+        ],
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "values": [
+            "value",
+            "percent"
+          ]
+        },
+        "pieType": "donut",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      }
     },
     {
       "type": "barchart",
-      "title": "Risk Severity Hotspots",
+      "title": "Deployment Availability",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "gridPos": {
-        "x": 12,
-        "y": 20,
-        "w": 12,
-        "h": 8
+        "x": 16,
+        "y": 39,
+        "w": 8,
+        "h": 7
       },
       "targets": [
         {
-          "expr": "topk(20, cicd_v13_risk_event_severity)"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "kube_deployment_status_replicas_available{namespace=~\"$namespace\"}",
+          "legendFormat": "{{namespace}}/{{deployment}}",
+          "format": "table",
+          "interval": ""
         }
-      ]
+      ],
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 70
+              },
+              {
+                "color": "green",
+                "value": 90
+              }
+            ]
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "horizontal",
+        "showValue": "always"
+      }
     },
     {
       "type": "table",
-      "title": "Spark Components",
+      "title": "Service Inventory Matrix",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "gridPos": {
         "x": 0,
-        "y": 28,
+        "y": 46,
         "w": 12,
-        "h": 8
+        "h": 9
       },
       "targets": [
         {
-          "expr": "cicd_v13_spark_component_ready"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "kube_service_info{namespace=~\"$namespace\"}",
+          "legendFormat": "{{namespace}}/{{service}}",
+          "format": "table",
+          "interval": ""
         }
-      ]
+      ],
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 70
+              },
+              {
+                "color": "green",
+                "value": 90
+              }
+            ]
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "sortBy": [
+          {
+            "desc": false,
+            "displayName": "Value"
+          }
+        ]
+      }
     },
     {
-      "type": "barchart",
-      "title": "Recruitment Capability Fit",
+      "type": "table",
+      "title": "Pod Readiness And Placement",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "gridPos": {
         "x": 12,
-        "y": 28,
+        "y": 46,
         "w": 12,
-        "h": 8
+        "h": 9
       },
       "targets": [
         {
-          "expr": "cicd_v13_market_capability_score"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "kube_pod_status_ready{condition=\"true\",namespace=~\"$namespace\"}",
+          "legendFormat": "{{namespace}}/{{pod}}",
+          "format": "table",
+          "interval": ""
         }
-      ]
+      ],
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 70
+              },
+              {
+                "color": "green",
+                "value": 90
+              }
+            ]
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true
+      }
     },
     {
       "type": "table",
-      "title": "Service Probe Detail",
+      "title": "Deployment Detail Drilldown",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "gridPos": {
         "x": 0,
-        "y": 36,
+        "y": 55,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "kube_deployment_status_replicas_available{namespace=~\"$namespace\"}",
+          "legendFormat": "{{namespace}}/{{deployment}}",
+          "format": "table",
+          "interval": ""
+        }
+      ],
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 70
+              },
+              {
+                "color": "green",
+                "value": 90
+              }
+            ]
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "type": "table",
+      "title": "Spark Component Drilldown",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 55,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "kube_pod_status_ready{condition=\"true\",pod=~\".*spark.*\"}",
+          "legendFormat": "{{namespace}}/{{pod}}",
+          "format": "table",
+          "interval": ""
+        }
+      ],
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 70
+              },
+              {
+                "color": "green",
+                "value": 90
+              }
+            ]
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "type": "table",
+      "title": "Node Condition Drilldown",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 55,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "kube_node_status_condition{node=~\"$node\"}",
+          "legendFormat": "{{node}}/{{condition}}/{{status}}",
+          "format": "table",
+          "interval": ""
+        }
+      ],
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 70
+              },
+              {
+                "color": "green",
+                "value": 90
+              }
+            ]
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "type": "timeseries",
+      "title": "Elasticsearch Imported V13 Events",
+      "datasource": {
+        "type": "elasticsearch",
+        "uid": "jenkins-v13-governance-es"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 63,
         "w": 12,
         "h": 8
       },
       "targets": [
         {
-          "expr": "cicd_v13_service_probe_ok"
+          "refId": "A",
+          "datasource": {
+            "type": "elasticsearch",
+            "uid": "jenkins-v13-governance-es"
+          },
+          "query": "pipeline_version:v13",
+          "metrics": [
+            {
+              "id": "1",
+              "type": "count"
+            }
+          ],
+          "bucketAggs": [
+            {
+              "id": "2",
+              "type": "date_histogram",
+              "field": "@timestamp",
+              "settings": {
+                "interval": "30m",
+                "min_doc_count": 0
+              }
+            }
+          ],
+          "timeField": "@timestamp"
         }
-      ]
+      ],
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 70
+              },
+              {
+                "color": "green",
+                "value": 90
+              }
+            ]
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 65,
+            "gradientMode": "opacity"
+          }
+        },
+        "overrides": []
+      },
+      "options": {}
     },
     {
-      "type": "table",
-      "title": "Layer Health Detail",
+      "type": "timeseries",
+      "title": "Kibana Risk Events Trend",
+      "datasource": {
+        "type": "elasticsearch",
+        "uid": "jenkins-v13-governance-es"
+      },
       "gridPos": {
         "x": 12,
-        "y": 36,
+        "y": 63,
         "w": 12,
         "h": 8
       },
       "targets": [
         {
-          "expr": "cicd_v13_layer_health_score"
+          "refId": "A",
+          "datasource": {
+            "type": "elasticsearch",
+            "uid": "jenkins-v13-governance-es"
+          },
+          "query": "pipeline_version:v13 AND type:risk_event",
+          "metrics": [
+            {
+              "id": "1",
+              "type": "count"
+            }
+          ],
+          "bucketAggs": [
+            {
+              "id": "2",
+              "type": "date_histogram",
+              "field": "@timestamp",
+              "settings": {
+                "interval": "30m",
+                "min_doc_count": 0
+              }
+            }
+          ],
+          "timeField": "@timestamp"
         }
-      ]
+      ],
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 70
+              },
+              {
+                "color": "green",
+                "value": 90
+              }
+            ]
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "fillOpacity": 30,
+            "gradientMode": "hue"
+          }
+        },
+        "overrides": []
+      },
+      "options": {}
     },
     {
-      "type": "stat",
-      "title": "Full Pod Coverage Ratio",
+      "type": "bargauge",
+      "title": "Service Inventory Distribution",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "gridPos": {
         "x": 0,
-        "y": 44,
-        "w": 6,
-        "h": 4
-      },
-      "targets": [
-        {
-          "expr": "cicd_v13_pod_coverage_ratio"
-        }
-      ]
-    },
-    {
-      "type": "table",
-      "title": "Full Pod Coverage Records",
-      "gridPos": {
-        "x": 6,
-        "y": 44,
-        "w": 18,
+        "y": 71,
+        "w": 12,
         "h": 8
       },
       "targets": [
         {
-          "expr": "cicd_v13_pod_coverage"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "count by(namespace) (kube_service_info{namespace=~\"$namespace\"})",
+          "legendFormat": "{{namespace}}",
+          "format": "time_series",
+          "interval": ""
         }
-      ]
+      ],
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 70
+              },
+              {
+                "color": "green",
+                "value": 90
+              }
+            ]
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "options": {
+        "displayMode": "lcd",
+        "orientation": "horizontal",
+        "showUnfilled": true
+      }
+    },
+    {
+      "type": "bargauge",
+      "title": "Node Readiness",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 71,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "kube_node_status_condition{condition=\"Ready\",status=\"true\",node=~\"$node\"}",
+          "legendFormat": "{{node}}",
+          "format": "time_series",
+          "interval": ""
+        }
+      ],
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "max": 1,
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 70
+              },
+              {
+                "color": "green",
+                "value": 90
+              }
+            ]
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "options": {
+        "displayMode": "gradient",
+        "orientation": "horizontal"
+      }
+    },
+    {
+      "type": "text",
+      "title": "Operational Links",
+      "datasource": null,
+      "gridPos": {
+        "x": 0,
+        "y": 79,
+        "w": 24,
+        "h": 3
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "- Public portal: https://platform.heil.ccwu.cc/\n- Internal V13 portal: http://192.168.1.58:30089/\n- Kibana: http://192.168.1.58:30061\n- Grafana: http://192.168.1.58:30084\n- Evidence source: Jenkins build #90"
+      }
     }
   ]
 }
