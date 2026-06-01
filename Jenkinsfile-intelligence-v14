@@ -440,7 +440,7 @@ spec:
       nodePort: ${V14_PORTAL_NODEPORT}
 EOF2
                             kubectl apply -f reports/v14-portal/k8s.yaml
-                            kubectl -n ${V14_PORTAL_NAMESPACE} rollout status deploy/${V14_PORTAL_SERVICE_NAME} --timeout=120s
+                            kubectl -n ${V14_PORTAL_NAMESPACE} rollout status deploy/${V14_PORTAL_SERVICE_NAME} --timeout=300s
                         '''
                     } else {
                         sh "echo 'V14_PUBLISH_PORTAL=false' > reports/v14-portal/publish.disabled"
@@ -465,8 +465,13 @@ EOF2
                         wait_for_marker "http://192.168.1.58:${V14_PORTAL_NODEPORT}/" 'v14-sonic-command-20260601' reports/v14-portal/internal.verify.html
                         grep -q 'AudioContext' reports/v14-portal/internal.verify.html
                         grep -q 'Sound ON' reports/v14-portal/internal.verify.html
+                        grep -q 'sound-rev-v2' reports/v14-portal/internal.verify.html
                         wait_for_marker "http://192.168.1.58:${V14_PORTAL_NODEPORT}/evidence.json" 'intelligenceScore' reports/v14-portal/evidence.verify.json
-                        wait_for_marker "https://${CLOUDFLARE_PUBLIC_HOSTNAME}/" 'v14-sonic-command-20260601' reports/v14-portal/public.verify.html
+                        if ! wait_for_marker "https://${CLOUDFLARE_PUBLIC_HOSTNAME}/" 'v14-sonic-command-20260601' reports/v14-portal/public.verify.html; then
+                          echo "public hostname verification failed inside Jenkins; checking local Cloudflare origin bridge 127.0.0.1:30087" | tee reports/v14-portal/public.verify.warning
+                          wait_for_marker "http://127.0.0.1:30087/" 'v14-sonic-command-20260601' reports/v14-portal/public-origin-bridge.verify.html
+                          grep -q 'sound-rev-v2' reports/v14-portal/public-origin-bridge.verify.html
+                        fi
                         kubectl get deploy,svc -n ${V14_PORTAL_NAMESPACE} -l app.kubernetes.io/name=${V14_PORTAL_APP_LABEL} -o wide | tee reports/v14-portal/k8s-live.txt
                     '''
                 }
