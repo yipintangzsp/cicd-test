@@ -156,7 +156,7 @@ const info = {
   cloudflare_hostname: process.env.CLOUDFLARE_PUBLIC_HOSTNAME,
   inherits: 'Jenkinsfile-epoch-v13'
 };
-fs.writeFileSync('meta/v14-build-info.json', JSON.stringify(info, null, 2) + '\n');
+fs.writeFileSync('meta/v14-build-info.json', JSON.stringify(info, null, 2) + '\\n');
 NODE
                     '''
                 }
@@ -164,7 +164,7 @@ NODE
                 stage('V14.02 捕获 V13 Fresh Baseline') {
                     sh '''
                         set -eu
-                        curl -fsS --max-time 20 "http://192.168.1.58:${V14_PORTAL_NODEPORT}/evidence.json" -o reports/v14-baseline/v13-evidence.json || printf '{"summary":{"collectionWarning":"v13 baseline unavailable"}}\n' > reports/v14-baseline/v13-evidence.json
+                        curl -fsS --max-time 20 "http://192.168.1.58:${V14_PORTAL_NODEPORT}/evidence.json" -o reports/v14-baseline/v13-evidence.json || printf '{"summary":{"collectionWarning":"v13 baseline unavailable"}}\\n' > reports/v14-baseline/v13-evidence.json
                         node -e "JSON.parse(require('fs').readFileSync('reports/v14-baseline/v13-evidence.json','utf8'))"
                     '''
                 }
@@ -300,7 +300,7 @@ JSON
 const fs = require('fs');
 const crypto = require('crypto');
 const index = process.env.INDEX_NAME;
-const input = fs.readFileSync('reports/v14-observability.ndjson','utf8').split('\n').filter(Boolean);
+const input = fs.readFileSync('reports/v14-observability.ndjson','utf8').split('\\n').filter(Boolean);
 const out = [];
 input.forEach((line, i) => {
   const doc = JSON.parse(line);
@@ -309,7 +309,7 @@ input.forEach((line, i) => {
   out.push(JSON.stringify({ index: { _index: index, _id: id } }));
   out.push(JSON.stringify(doc));
 });
-fs.writeFileSync('reports/v14-observability-import/bulk.ndjson', out.join('\n') + '\n');
+fs.writeFileSync('reports/v14-observability-import/bulk.ndjson', out.join('\\n') + '\\n');
 console.log('v14_bulk_events=' + input.length);
 NODE
                         curl -fsS -X POST "${ES_URL}/_bulk?refresh=true" -H 'Content-Type: application/x-ndjson' --data-binary @reports/v14-observability-import/bulk.ndjson -o reports/v14-observability-import/bulk-result.json
