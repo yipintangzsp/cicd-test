@@ -172,14 +172,29 @@ NODE
                 stage('V14.03 采集实时平台资产') {
                     sh '''
                         set -eu
-                        kubectl get pods -A -o json > meta/v14-pods-live.json
-                        kubectl get svc -A -o json > meta/v14-services-live.json
-                        kubectl get endpoints -A -o json > meta/v14-endpoints-live.json || true
-                        kubectl get deploy,statefulset,daemonset -A -o json > meta/v14-workloads-live.json
-                        kubectl get nodes -o json > meta/v14-nodes-live.json
-                        kubectl get events -A --sort-by=.lastTimestamp -o json > meta/v14-events-live.json || true
-                        kubectl get pvc -A -o json > meta/v14-pvc-live.json || true
-                        kubectl get pv -o json > meta/v14-pv-live.json || true
+                        capture_json() {
+                          title="$1"; output="$2"; shift 2
+                          tmp="${output}.tmp"
+                          for attempt in 1 2 3 4; do
+                            if "$@" --request-timeout=45s -o json > "$tmp" 2>"${tmp}.err"; then
+                              mv "$tmp" "$output"
+                              rm -f "${tmp}.err"
+                              return 0
+                            fi
+                            printf '[%s] %s attempt=%s failed: %s\\n' "$(date -u +%FT%TZ)" "$title" "$attempt" "$(cat "${tmp}.err" 2>/dev/null)" >> meta/v14-cluster-capture-errors.log
+                            sleep $((attempt * 5))
+                          done
+                          printf '{"apiVersion":"v1","items":[],"captureWarning":"%s capture failed after retries"}\\n' "$title" > "$output"
+                          return 0
+                        }
+                        capture_json pods meta/v14-pods-live.json kubectl get pods -A
+                        capture_json services meta/v14-services-live.json kubectl get svc -A
+                        capture_json endpoints meta/v14-endpoints-live.json kubectl get endpoints -A
+                        capture_json workloads meta/v14-workloads-live.json kubectl get deploy,statefulset,daemonset -A
+                        capture_json nodes meta/v14-nodes-live.json kubectl get nodes
+                        capture_json events meta/v14-events-live.json kubectl get events -A --sort-by=.lastTimestamp
+                        capture_json pvc meta/v14-pvc-live.json kubectl get pvc -A
+                        capture_json pv meta/v14-pv-live.json kubectl get pv
                         kubectl top nodes --no-headers > meta/v14-node-top.txt 2>&1 || true
                         kubectl top pods -A --no-headers > meta/v14-pod-top.txt 2>&1 || true
                     '''
