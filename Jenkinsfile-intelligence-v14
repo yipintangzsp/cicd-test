@@ -450,9 +450,23 @@ EOF2
                 stage('V14.94 V14 成果验证') {
                     sh '''
                         set -eu
-                        curl -fsS --max-time 15 "http://192.168.1.58:${V14_PORTAL_NODEPORT}/" | grep -q 'v14-intelligence-hypergrid-20260601'
-                        curl -fsS --max-time 15 "http://192.168.1.58:${V14_PORTAL_NODEPORT}/evidence.json" | grep -q 'intelligenceScore'
-                        curl -fsS --max-time 25 "https://${CLOUDFLARE_PUBLIC_HOSTNAME}/" | grep -q 'v14-intelligence-hypergrid-20260601'
+                        wait_for_marker() {
+                          url="$1"; marker="$2"; output="$3"
+                          for attempt in $(seq 1 30); do
+                            if curl -fsS --max-time 15 "$url" -o "$output" && grep -q "$marker" "$output"; then
+                              return 0
+                            fi
+                            sleep 3
+                          done
+                          echo "missing marker ${marker} at ${url}" >&2
+                          test -s "$output" && tail -c 500 "$output" >&2 || true
+                          return 1
+                        }
+                        wait_for_marker "http://192.168.1.58:${V14_PORTAL_NODEPORT}/" 'v14-sonic-command-20260601' reports/v14-portal/internal.verify.html
+                        grep -q 'AudioContext' reports/v14-portal/internal.verify.html
+                        grep -q 'Sound ON' reports/v14-portal/internal.verify.html
+                        wait_for_marker "http://192.168.1.58:${V14_PORTAL_NODEPORT}/evidence.json" 'intelligenceScore' reports/v14-portal/evidence.verify.json
+                        wait_for_marker "https://${CLOUDFLARE_PUBLIC_HOSTNAME}/" 'v14-sonic-command-20260601' reports/v14-portal/public.verify.html
                         kubectl get deploy,svc -n ${V14_PORTAL_NAMESPACE} -l app.kubernetes.io/name=${V14_PORTAL_APP_LABEL} -o wide | tee reports/v14-portal/k8s-live.txt
                     '''
                 }
