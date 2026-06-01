@@ -439,7 +439,14 @@ spec:
       targetPort: 80
       nodePort: ${V14_PORTAL_NODEPORT}
 EOF2
-                            kubectl apply -f reports/v14-portal/k8s.yaml
+                            for attempt in 1 2 3 4 5; do
+                              if kubectl apply --validate=false -f reports/v14-portal/k8s.yaml; then
+                                break
+                              fi
+                              echo "kubectl apply failed, retry attempt=${attempt}" >&2
+                              sleep $((attempt * 8))
+                              test "$attempt" != "5"
+                            done
                             kubectl -n ${V14_PORTAL_NAMESPACE} rollout status deploy/${V14_PORTAL_SERVICE_NAME} --timeout=300s
                         '''
                     } else {
