@@ -111,7 +111,11 @@ def runV14 = {
         timestamps {
             try {
                 stage('V14.00 运行 V13 Foundation') {
-                    load 'Jenkinsfile-epoch-v13'
+                    if ("${p('V14_RUN_V13_FOUNDATION', false)}" == 'true') {
+                        load 'Jenkinsfile-epoch-v13'
+                    } else {
+                        echo 'V14_RUN_V13_FOUNDATION=false: skip full V13 rerun and inherit live V13/V14 evidence from portal baseline.'
+                    }
                 }
 
                 stage('V14.01 重新载入源码') {
@@ -130,6 +134,7 @@ def runV14 = {
                     env.V14_IMPORT_OBSERVABILITY_ASSETS = "${p('V14_IMPORT_OBSERVABILITY_ASSETS', true)}"
                     env.V14_PUBLISH_PORTAL = "${p('V14_PUBLISH_PORTAL', true)}"
                     env.V14_STRICT_RISK_GATE = "${p('V14_STRICT_RISK_GATE', false)}"
+                    env.V14_RUN_V13_FOUNDATION = "${p('V14_RUN_V13_FOUNDATION', false)}"
                     env.CLOUDFLARE_PUBLIC_HOSTNAME = "${p('CLOUDFLARE_PUBLIC_HOSTNAME', 'platform.heil.ccwu.cc')}"
                     env.GIT_COMMIT_ID = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
                     env.GIT_BRANCH_NAME = sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim()

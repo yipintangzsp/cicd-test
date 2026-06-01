@@ -49,6 +49,7 @@ properties([
         booleanParam(name: 'V14_PUBLISH_PORTAL', defaultValue: true, description: '[v14] Publish the V14 platform intelligence hypergrid portal.'),
         booleanParam(name: 'V14_IMPORT_OBSERVABILITY_ASSETS', defaultValue: true, description: '[v14] Import V14 Elasticsearch, Kibana and Grafana intelligence assets.'),
         booleanParam(name: 'V14_STRICT_RISK_GATE', defaultValue: false, description: '[v14] Keep false unless you want high-risk findings to fail the build.'),
+        booleanParam(name: 'V14_RUN_V13_FOUNDATION', defaultValue: false, description: '[v14] Default false: inherit live baseline evidence instead of rerunning the full V13 pipeline.'),
         string(name: 'V14_GRAFANA_DASHBOARD_TITLE', defaultValue: 'ZhangLab V14 Platform Intelligence', description: '[v14] Grafana dashboard title.'),
         string(name: 'V14_KIBANA_INDEX_PREFIX', defaultValue: 'jenkins-v14-intelligence', description: '[v14] Kibana/Elasticsearch index prefix.'),
         string(name: 'V14_PORTAL_NAMESPACE', defaultValue: 'ns-apps', description: '[v14] Portal namespace.'),
