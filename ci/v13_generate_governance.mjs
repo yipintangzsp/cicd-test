@@ -742,7 +742,7 @@ write('reports/v13-kibana-dashboard.ndjson', kibanaObjects.map((object) => JSON.
 
 const evidenceJson = JSON.stringify(evidence).replace(/</g, '\\u003c');
 const html = `<!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-visual-rev="aurora-hyperdeck-20260601">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -777,7 +777,12 @@ const html = `<!doctype html>
       background:conic-gradient(from 45deg,rgba(34,211,238,.22),rgba(52,211,153,.08),rgba(245,158,11,.20),rgba(244,114,182,.16),rgba(34,211,238,.22));
       filter:blur(70px); opacity:.62; animation:aurora 12s ease-in-out infinite alternate;
     }
-    #ambientCanvas { position:fixed; inset:0; width:100%; height:100%; z-index:-1; pointer-events:none; opacity:.44; }
+    #ambientCanvas { position:fixed; inset:0; width:100%; height:100%; z-index:-1; pointer-events:none; opacity:.55; mix-blend-mode:screen; }
+    .cursor-glow {
+      position:fixed; width:260px; height:260px; margin:-130px 0 0 -130px; z-index:-1; pointer-events:none; border-radius:50%;
+      background:radial-gradient(circle,rgba(34,211,238,.18),rgba(245,158,11,.10) 32%,transparent 64%);
+      filter:blur(14px); opacity:.86; transform:translate3d(-999px,-999px,0); transition:opacity .2s ease;
+    }
     a { color:inherit; }
     .topbar {
       min-height:56px; padding:10px 30px; display:grid; grid-template-columns:auto minmax(0,1fr) auto; gap:18px; align-items:center;
@@ -838,6 +843,31 @@ const html = `<!doctype html>
     .mini-value { font-size:36px; line-height:1; font-weight:950; }
     .mini-label { margin-top:8px; color:var(--muted); font-size:13px; }
     .mini-spark { position:absolute; left:14px; right:14px; bottom:26px; height:42px; opacity:.7; }
+    .orbit-stage {
+      grid-column:1/-1; min-height:190px; border:1px solid rgba(255,255,255,.12); border-radius:8px; position:relative; overflow:hidden;
+      background:
+        radial-gradient(circle at 50% 50%,rgba(34,211,238,.26),transparent 28%),
+        linear-gradient(135deg,rgba(6,18,32,.84),rgba(21,35,24,.44),rgba(38,18,43,.42));
+    }
+    .orbit-stage:before {
+      content:""; position:absolute; inset:14px; border:1px solid rgba(34,211,238,.25); border-radius:50%;
+      transform:rotateX(66deg); box-shadow:0 0 44px rgba(34,211,238,.18), inset 0 0 42px rgba(245,158,11,.10);
+    }
+    .orbit-stage:after {
+      content:""; position:absolute; inset:0; pointer-events:none;
+      background:linear-gradient(110deg,transparent 0 38%,rgba(255,255,255,.12) 44%,transparent 52% 100%);
+      animation:sweep 5.5s linear infinite;
+    }
+    .orbit-title { position:absolute; left:16px; top:14px; color:#dff7ff; font-weight:950; font-size:13px; letter-spacing:0; }
+    .orbit-node {
+      position:absolute; width:86px; min-height:42px; padding:8px; border:1px solid rgba(255,255,255,.18); border-radius:7px;
+      background:rgba(3,10,18,.72); box-shadow:0 0 24px rgba(34,211,238,.14); font-size:11px; font-weight:850;
+      transform:translate(-50%,-50%); cursor:pointer; transition:transform .18s ease,border-color .18s ease,box-shadow .18s ease;
+      font-family:inherit; text-align:left;
+    }
+    .orbit-node:hover { transform:translate(-50%,-50%) scale(1.08); border-color:var(--amber); box-shadow:0 0 34px rgba(245,158,11,.28); }
+    .orbit-node small { display:block; color:var(--muted); margin-top:3px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .orbit-node.ok { color:var(--green); } .orbit-node.warn { color:var(--amber); } .orbit-node.bad { color:var(--red); }
     .control-strip {
       position:sticky; top:0; z-index:12; margin:8px 0 18px; padding:10px; border:1px solid var(--line); border-radius:8px;
       background:rgba(5,13,24,.78); backdrop-filter:blur(22px); box-shadow:0 16px 44px rgba(0,0,0,.24);
@@ -871,13 +901,21 @@ const html = `<!doctype html>
     .card, .panel {
       border:1px solid var(--line); border-radius:8px; background:var(--panel); box-shadow:0 20px 64px rgba(0,0,0,.24); backdrop-filter:blur(18px);
     }
-    .card { min-height:132px; padding:15px; position:relative; overflow:hidden; }
+    .card { min-height:132px; padding:15px; position:relative; overflow:hidden; transition:transform .18s ease,border-color .18s ease,box-shadow .18s ease; }
     .card:before { content:""; position:absolute; inset:-30% auto auto -20%; width:120px; height:120px; border-radius:50%; background:var(--accent,var(--cyan)); opacity:.18; filter:blur(22px); }
+    .card:hover { transform:translateY(-4px); border-color:var(--accent,var(--cyan)); box-shadow:0 26px 72px rgba(0,0,0,.30),0 0 30px rgba(34,211,238,.22); }
     .metric { position:relative; font-size:34px; line-height:1; font-weight:950; }
     .label { position:relative; color:var(--muted); margin-top:8px; font-size:13px; line-height:1.35; }
     .sparkline { position:absolute; left:12px; right:12px; bottom:12px; height:34px; opacity:.72; }
     .grid { display:grid; grid-template-columns:repeat(12,1fr); gap:14px; align-items:start; }
-    .panel { min-height:288px; padding:16px; overflow:hidden; }
+    .panel { min-height:288px; padding:16px; overflow:hidden; position:relative; transition:transform .18s ease,border-color .18s ease,box-shadow .18s ease; }
+    .panel:before {
+      content:""; position:absolute; inset:0; pointer-events:none; opacity:.0;
+      background:linear-gradient(120deg,transparent,rgba(34,211,238,.12),transparent 58%);
+      transform:translateX(-80%); transition:opacity .2s ease;
+    }
+    .panel:hover { transform:translateY(-2px); border-color:rgba(34,211,238,.38); box-shadow:0 26px 74px rgba(0,0,0,.30); }
+    .panel:hover:before { opacity:1; animation:sweep 2.4s linear; }
     .panel-head { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; margin-bottom:10px; }
     h2 { margin:0; font-size:17px; letter-spacing:0; }
     .sub { color:var(--muted); font-size:12px; line-height:1.45; margin-top:4px; }
@@ -894,6 +932,31 @@ const html = `<!doctype html>
     tbody tr { transition:background .14s ease; }
     tbody tr:hover { background:rgba(34,211,238,.07); }
     .table-wrap { max-height:460px; overflow:auto; border:1px solid rgba(255,255,255,.10); border-radius:8px; }
+    .command-dock {
+      display:grid; grid-template-columns:repeat(5,minmax(120px,1fr)); gap:10px; margin:0 0 16px;
+    }
+    .dock-btn {
+      min-height:64px; border:1px solid rgba(255,255,255,.14); border-radius:8px; background:linear-gradient(145deg,rgba(9,22,38,.92),rgba(45,26,46,.46));
+      color:var(--ink); text-align:left; padding:11px 12px; font:inherit; cursor:pointer; position:relative; overflow:hidden;
+    }
+    .dock-btn:before { content:""; position:absolute; inset:auto 10px 8px 10px; height:3px; border-radius:99px; background:linear-gradient(90deg,var(--cyan),var(--green),var(--amber),var(--magenta)); transform:scaleX(.25); transform-origin:left; transition:transform .18s ease; }
+    .dock-btn:hover:before { transform:scaleX(1); }
+    .dock-btn strong { display:block; font-size:13px; }
+    .dock-btn span { display:block; color:var(--muted); font-size:11px; margin-top:5px; }
+    .event-stream { display:grid; gap:8px; max-height:320px; overflow:auto; }
+    .event-pill {
+      width:100%; border:1px solid rgba(255,255,255,.12); border-radius:8px; color:#dff7ff; background:rgba(3,10,18,.55);
+      padding:10px; text-align:left; font:inherit; cursor:pointer; display:grid; grid-template-columns:42px 1fr auto; gap:10px; align-items:center;
+    }
+    .event-pill:hover { border-color:var(--cyan); background:rgba(34,211,238,.09); }
+    .event-score { width:38px; height:38px; display:grid; place-items:center; border-radius:8px; font-weight:950; background:rgba(255,255,255,.09); color:var(--amber); }
+    .event-name { font-weight:900; font-size:12px; }
+    .event-meta { color:var(--muted); font-size:11px; margin-top:3px; }
+    .constellation .node { cursor:pointer; filter:drop-shadow(0 0 10px rgba(34,211,238,.30)); }
+    .constellation .node:hover { filter:drop-shadow(0 0 18px rgba(245,158,11,.58)); }
+    .constellation .link { stroke-dasharray:6 10; animation:flowPulse 3.5s linear infinite; }
+    body.immersive .topbar { opacity:.2; }
+    body.immersive .hero { min-height:calc(100vh - 80px); }
     .flow-lane { min-height:310px; position:relative; }
     .flow-node { position:absolute; width:128px; min-height:62px; padding:10px; border:1px solid rgba(255,255,255,.16); border-radius:8px; background:rgba(6,18,32,.78); box-shadow:0 0 32px rgba(34,211,238,.08); }
     .flow-node strong { display:block; font-size:13px; }
@@ -916,11 +979,13 @@ const html = `<!doctype html>
     @keyframes flowPulse { from { filter:hue-rotate(0deg); opacity:.45; } 50% { opacity:1; } to { filter:hue-rotate(80deg); opacity:.45; } }
     @media (prefers-reduced-motion: reduce) { *, *:before, *:after { animation:none !important; transition:none !important; } }
     @media (max-width: 1180px) { .hero { grid-template-columns:1fr; } .viewbar { grid-template-columns:repeat(3,1fr); } .half,.third,.two-third { grid-column:span 12; } .command-core { grid-template-columns:1fr; } .health-orb { grid-row:auto; } }
-    @media (max-width: 720px) { .topbar { grid-template-columns:1fr; padding:10px 14px; } .top-actions { justify-content:flex-start; } .shell,.hero { padding-left:14px; padding-right:14px; } h1 { font-size:40px; } .control-strip { grid-template-columns:1fr; } .chip-row { justify-content:flex-start; } .viewbar { grid-template-columns:1fr 1fr; } .cards { grid-template-columns:1fr 1fr; } }
+    @media (max-width: 1180px) { .command-dock { grid-template-columns:repeat(2,1fr); } }
+    @media (max-width: 720px) { .topbar { grid-template-columns:1fr; padding:10px 14px; } .top-actions { justify-content:flex-start; } .shell,.hero { padding-left:14px; padding-right:14px; } h1 { font-size:40px; } .control-strip { grid-template-columns:1fr; } .chip-row { justify-content:flex-start; } .viewbar { grid-template-columns:1fr 1fr; } .cards { grid-template-columns:1fr 1fr; } .command-dock { grid-template-columns:1fr; } }
   </style>
 </head>
 <body>
   <canvas id="ambientCanvas" aria-hidden="true"></canvas>
+  <div class="cursor-glow" id="cursorGlow" aria-hidden="true"></div>
   <div class="topbar">
     <div class="brand"><span class="brand-mark">Z</span><span>ZhangLab</span><span class="signal">V13</span></div>
     <div class="live-tape" aria-label="Live platform status">
@@ -982,6 +1047,9 @@ const html = `<!doctype html>
         <div class="mini-label">pods covered by evidence</div>
         <svg class="mini-spark" id="heroCoverageSpark"></svg>
       </div>
+      <div class="orbit-stage" id="orbitStage" aria-label="Interactive platform orbit">
+        <div class="orbit-title">Interactive Service Orbit · 点击节点可聚焦服务</div>
+      </div>
     </div>
   </section>
   <main class="shell">
@@ -1002,8 +1070,23 @@ const html = `<!doctype html>
       <button class="view-btn" data-target-view="market"><span>Market Fit</span><small>招聘能力、工具覆盖</small></button>
       <button class="view-btn" data-target-view="evidence"><span>Evidence</span><small>原始证据、审计线索</small></button>
     </nav>
+    <section class="command-dock" aria-label="Quick commands">
+      <button class="dock-btn" data-command="refresh"><strong>刷新证据</strong><span>立即重新拉取 evidence.json</span></button>
+      <button class="dock-btn" data-command="risk"><strong>聚焦异常</strong><span>切到风险视图并筛选失败项</span></button>
+      <button class="dock-btn" data-command="spark"><strong>Spark 脉冲</strong><span>只看 Spark 和数据平台链路</span></button>
+      <button class="dock-btn" data-command="services"><strong>服务矩阵</strong><span>展开 Pod / Service / Probe</span></button>
+      <button class="dock-btn" data-command="immersive"><strong>沉浸模式</strong><span>切换全屏仪表盘观感</span></button>
+    </section>
     <section class="cards" id="cards"></section>
     <section class="grid">
+      <div class="panel two-third view-panel" data-view="overview services">
+        <div class="panel-head"><div><h2>Service Constellation</h2><div class="sub">服务、Pod、探针组成的可点击星图；点击节点会切换到矩阵并带入筛选。</div></div><div class="panel-actions"><button class="mini-btn active">clickable</button></div></div>
+        <svg class="constellation" id="constellationChart"></svg>
+      </div>
+      <div class="panel third view-panel" data-view="overview risk">
+        <div class="panel-head"><div><h2>Live Event Stream</h2><div class="sub">失败探针、端点缺口和重启热点按优先级滚动。</div></div></div>
+        <div class="event-stream" id="eventStream"></div>
+      </div>
       <div class="panel half view-panel" data-view="overview data">
         <div class="panel-head"><div><h2>Layer Health Radar</h2><div class="sub">平台按 cluster、DevOps、data、observability、application 分层评分。</div></div><div class="panel-actions"><button class="mini-btn active">radar</button></div></div>
         <svg id="layerChart"></svg>
@@ -1108,6 +1191,75 @@ const html = `<!doctype html>
         [fmt.format(s.restartTotal), 'Total restarts', '#f59e0b', [1,2,4,Math.max(1,s.restartTotal)]],
       ];
       el('cards').innerHTML = cards.map((c, index) => '<div class="card" style="--accent:' + c[2] + '"><div class="metric">' + esc(c[0]) + '</div><div class="label">' + esc(c[1]) + '</div><svg class="sparkline" viewBox="0 0 180 34"><path d="' + sparkPath(c[3], 180, 34) + '" fill="none" stroke="' + c[2] + '" stroke-width="3" stroke-linecap="round"><animate attributeName="stroke-dasharray" from="0 300" to="300 0" dur="' + (0.7 + index * .05) + 's" fill="freeze"/></path></svg></div>').join('');
+    }
+    function focusQuery(query, view) {
+      el('filter').value = query || '';
+      setView(view || 'services');
+      applyFilter();
+      document.querySelector('.control-strip').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      toast(query ? '已聚焦：' + query : '已清空筛选');
+    }
+    function renderOrbit() {
+      const host = el('orbitStage');
+      if (!host) return;
+      host.querySelectorAll('.orbit-node').forEach((node) => node.remove());
+      const source = (evidence.serviceProbes && evidence.serviceProbes.length ? evidence.serviceProbes : evidence.jobMarketFit).slice(0, 8);
+      const w = host.clientWidth || 620;
+      const cx = w / 2;
+      const cy = 112;
+      const rx = Math.min(250, Math.max(150, w * .36));
+      const ry = 62;
+      source.forEach((item, index) => {
+        const angle = -Math.PI / 2 + index * Math.PI * 2 / Math.max(1, source.length);
+        const button = document.createElement('button');
+        const status = item.status || item.coverage || 'ok';
+        const query = item.name || item.capability || item.namespace || '';
+        button.className = 'orbit-node ' + clsStatus(status);
+        button.style.left = Math.round(cx + Math.cos(angle) * rx) + 'px';
+        button.style.top = Math.round(cy + Math.sin(angle) * ry) + 'px';
+        button.dataset.focus = query;
+        button.innerHTML = '<span>' + esc(query || 'platform') + '</span><small>' + esc(item.namespace || item.group || item.coverage || status) + '</small>';
+        button.addEventListener('click', () => focusQuery(query, item.group && /spark/i.test(item.group) ? 'data' : 'services'));
+        host.appendChild(button);
+      });
+    }
+    function constellationChart() {
+      const node = el('constellationChart');
+      const probes = evidence.serviceProbes.slice(0, 22);
+      const pods = evidence.pods.slice(0, Math.max(0, 22 - probes.length));
+      const rows = probes.map((row) => ({ name: row.name, group: row.group || row.namespace, status: row.status, namespace: row.namespace, kind: row.kind || 'probe' }))
+        .concat(pods.map((row) => ({ name: row.name, group: row.namespace, status: row.ready ? 'ok' : 'failed', namespace: row.namespace, kind: 'pod' })));
+      const width = 900, height = 310, cx = width / 2, cy = height / 2;
+      node.setAttribute('viewBox', '0 0 ' + width + ' ' + height);
+      if (!rows.length) {
+        node.innerHTML = '<text x="24" y="80" fill="#34d399" font-size="20">No service evidence yet</text>';
+        return;
+      }
+      const points = rows.map((row, index) => {
+        const lane = index % 3;
+        const radius = 78 + lane * 46;
+        const angle = -Math.PI / 2 + index * Math.PI * 2 / rows.length;
+        return { row, x: cx + Math.cos(angle) * radius, y: cy + Math.sin(angle) * radius, color: row.status === 'ok' ? '#34d399' : '#fb7185' };
+      });
+      const links = points.map((p, index) => {
+        const next = points[(index + 1) % points.length];
+        return '<line class="link" x1="' + p.x + '" y1="' + p.y + '" x2="' + next.x + '" y2="' + next.y + '" stroke="' + p.color + '" stroke-width="1" opacity=".36"></line>';
+      }).join('');
+      const nodes = points.map((p, index) => {
+        const pulseDur = (1.5 + (index % 6) * .18).toFixed(2);
+        return '<g class="node" data-focus="' + esc(p.row.name) + '"><circle cx="' + p.x + '" cy="' + p.y + '" r="' + (p.row.status === 'ok' ? 10 : 13) + '" fill="' + p.color + '" opacity=".92"><animate attributeName="r" values="7;14;8" dur="' + pulseDur + 's" repeatCount="indefinite"/></circle><text x="' + (p.x + 16) + '" y="' + (p.y + 4) + '" fill="#dff7ff" font-size="10" font-weight="800">' + esc(String(p.row.name || '').slice(0, 18)) + '</text><text x="' + (p.x + 16) + '" y="' + (p.y + 18) + '" fill="#9fb2c9" font-size="9">' + esc(p.row.namespace || p.row.group || p.row.kind) + '</text></g>';
+      }).join('');
+      node.innerHTML = '<defs><radialGradient id="coreGlow"><stop stop-color="#22d3ee" stop-opacity=".70"/><stop offset="1" stop-color="#22d3ee" stop-opacity="0"/></radialGradient></defs><circle cx="' + cx + '" cy="' + cy + '" r="74" fill="url(#coreGlow)" opacity=".30"></circle><circle cx="' + cx + '" cy="' + cy + '" r="44" fill="rgba(34,211,238,.14)" stroke="rgba(255,255,255,.18)"></circle><text x="' + cx + '" y="' + (cy + 4) + '" text-anchor="middle" fill="#eef8ff" font-size="15" font-weight="950">V13</text>' + links + nodes;
+      node.querySelectorAll('[data-focus]').forEach((item) => item.addEventListener('click', () => focusQuery(item.dataset.focus, 'services')));
+    }
+    function eventStream() {
+      const events = evidence.riskEvents.slice(0, 8).map((row) => ({ score: row.severity, title: row.category, meta: (row.namespace || '-') + '/' + (row.name || '-'), query: row.name || row.namespace || '', view: 'risk' }))
+        .concat(evidence.failedProbes.slice(0, 5).map((row) => ({ score: 'HTTP', title: row.status || 'probe failed', meta: (row.namespace || '-') + '/' + (row.name || '-'), query: row.name || row.namespace || '', view: 'services' })))
+        .concat(evidence.restartHotspots.slice(0, 5).map((row) => ({ score: row.restarts, title: 'restart hotspot', meta: (row.namespace || '-') + '/' + (row.name || '-'), query: row.name || row.namespace || '', view: 'risk' })));
+      el('eventStream').innerHTML = (events.length ? events : [{ score: 'OK', title: 'No active event', meta: 'platform evidence is quiet', query: '', view: 'overview' }]).slice(0, 12).map((event, index) =>
+        '<button class="event-pill" data-event-query="' + esc(event.query) + '" data-event-view="' + esc(event.view) + '"><span class="event-score">' + esc(event.score) + '</span><span><span class="event-name">' + esc(event.title) + '</span><span class="event-meta">' + esc(event.meta) + '</span></span><span class="status-dot" style="color:' + colors[index % colors.length] + '"></span></button>'
+      ).join('');
+      document.querySelectorAll('[data-event-query]').forEach((button) => button.addEventListener('click', () => focusQuery(button.dataset.eventQuery, button.dataset.eventView)));
     }
     function barChart(node, rows, labelKey, valueKey, maxValue, color) {
       const width = 860, rowH = 28, top = 16, left = 190, height = Math.max(220, top + rows.length * rowH + 20);
@@ -1303,9 +1455,27 @@ const html = `<!doctype html>
       riskChart();
       timelineChart();
       ringChart();
+      renderOrbit();
+      constellationChart();
+      eventStream();
       lineageFlow();
       sparkPanel();
       applyFilter();
+    }
+    function runCommand(command) {
+      if (command === 'refresh') {
+        refreshEvidence();
+        toast('正在刷新证据快照');
+      } else if (command === 'risk') {
+        focusQuery('failed', 'risk');
+      } else if (command === 'spark') {
+        focusQuery('spark', 'data');
+      } else if (command === 'services') {
+        focusQuery('', 'services');
+      } else if (command === 'immersive') {
+        document.body.classList.toggle('immersive');
+        toast(document.body.classList.contains('immersive') ? '沉浸模式已开启' : '沉浸模式已关闭');
+      }
     }
     function boot() {
       ambient();
@@ -1323,11 +1493,16 @@ const html = `<!doctype html>
         document.querySelectorAll('[data-risk-mode]').forEach((node) => node.classList.toggle('active', node.dataset.riskMode === riskMode));
         riskChart();
       }));
+      document.querySelectorAll('[data-command]').forEach((button) => button.addEventListener('click', () => runCommand(button.dataset.command)));
+      addEventListener('pointermove', (event) => {
+        const glow = el('cursorGlow');
+        if (glow) glow.style.transform = 'translate3d(' + event.clientX + 'px,' + event.clientY + 'px,0)';
+      }, { passive: true });
       el('copyEvidence').addEventListener('click', async () => {
         const url = location.origin + location.pathname.replace(/\\/$/, '') + '/evidence.json';
         try { await navigator.clipboard.writeText(url); toast('已复制 evidence.json 地址：' + url); } catch (err) { toast(url); }
       });
-      addEventListener('resize', () => lineageFlow());
+      addEventListener('resize', () => { lineageFlow(); renderOrbit(); constellationChart(); });
       const initialView = ['overview','risk','data','services','market','evidence'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'overview';
       setView(initialView);
     }

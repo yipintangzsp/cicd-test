@@ -1,36 +1,31 @@
-// V13 epoch router. This job is independent from hello-app but inherits V12 evidence patterns.
+// GitHub pipeline router. This job is independent from hello-app and keeps every
+// historical Jenkinsfile selectable, newest first.
 
 def pipelineVersions = [
-    'Jenkinsfile-epoch-v13'
+    'Jenkinsfile-epoch-v13',
+    'Jenkinsfile-expert-v12',
+    'Jenkinsfile-expert-v11',
+    'Jenkinsfile-expert-v10',
+    'Jenkinsfile-expert-v9',
+    'Jenkinsfile-v8-jkvideo',
+    'Jenkinsfile-expert-v8',
+    'Jenkinsfile-expert-v7',
+    'Jenkinsfile-expert-v6',
+    'Jenkinsfile-expert-v5',
+    'Jenkinsfile-expert-v4',
+    'Jenkinsfile-expert-v3',
+    'Jenkinsfile-expert-v2',
+    'Jenkinsfile-v2-tested',
+    'Jenkinsfile_v2',
+    'Jenkinsfile-v1'
 ]
 
 properties([
     disableConcurrentBuilds(),
     buildDiscarder(logRotator(numToKeepStr: '45', artifactNumToKeepStr: '30')),
-    pipelineTriggers([
-        gitlab(
-            triggerOnPush: true,
-            triggerToBranchDeleteRequest: false,
-            triggerOnMergeRequest: false,
-            triggerOnlyIfNewCommitsPushed: true,
-            triggerOnPipelineEvent: false,
-            triggerOnAcceptedMergeRequest: false,
-            triggerOnClosedMergeRequest: false,
-            triggerOnApprovedMergeRequest: false,
-            triggerOpenMergeRequestOnPush: 'never',
-            triggerOnNoteRequest: false,
-            ciSkip: true,
-            skipWorkInProgressMergeRequest: true,
-            setBuildDescription: true,
-            branchFilterType: 'NameBasedFilter',
-            includeBranchesSpec: 'main',
-            excludeBranchesSpec: '',
-            secretToken: 'platform-era-v13-gitlab-webhook-20260525',
-            cancelPendingBuildsOnUpdate: false
-        )
-    ]),
+    pipelineTriggers([githubPush(), pollSCM('* * * * *')]),
     parameters([
-        choice(name: 'PIPELINE_VERSION', choices: pipelineVersions, description: 'V13 new-era pipeline entry.'),
+        choice(name: 'PIPELINE_VERSION', choices: pipelineVersions, description: 'Select GitHub pipeline version, newest first.'),
         choice(name: 'DEPLOY_ENV', choices: ['dev', 'test', 'prod'], description: 'Target environment label.'),
         booleanParam(name: 'DRY_RUN', defaultValue: false, description: 'Run build/publish path by default; enable only for validation-only execution.'),
         booleanParam(name: 'RUN_UNIT_TESTS', defaultValue: true, description: 'Keep inherited build/test checks enabled.'),
@@ -57,9 +52,10 @@ properties([
 ])
 
 node {
-    stage('Select V13 Epoch Jenkinsfile') {
+    stage('Select GitHub Jenkinsfile') {
         checkout scm
-        def selected = (params.PIPELINE_VERSION ?: 'Jenkinsfile-epoch-v13').trim()
+        def rawSelected = (params.PIPELINE_VERSION ?: 'Jenkinsfile-epoch-v13').trim()
+        def selected = rawSelected == 'Jenkinsfile' ? 'Jenkinsfile-epoch-v13' : rawSelected
         if (!pipelineVersions.contains(selected)) {
             error "Unsupported PIPELINE_VERSION: ${selected}"
         }
@@ -67,7 +63,7 @@ node {
             error "Selected Jenkinsfile does not exist: ${selected}"
         }
         currentBuild.displayName = "#${env.BUILD_NUMBER} ${selected}"
-        currentBuild.description = "new-era-router=${selected}"
+        currentBuild.description = "github-router=${selected}"
         load selected
     }
 }
