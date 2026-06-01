@@ -389,6 +389,8 @@ spec:
         app.kubernetes.io/component: evidence-portal
         pipeline-version: v14
     spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
       containers:
         - name: portal
           image: ${IMAGE}
