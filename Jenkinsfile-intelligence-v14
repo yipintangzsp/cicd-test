@@ -334,6 +334,28 @@ NODE
 {"attributes":{"title":"${V14_KIBANA_INDEX_PREFIX}-*","timeFieldName":"@timestamp"}}
 EOF2
                         curl -fsS -X POST "${KB_URL}/api/saved_objects/index-pattern/${V14_KIBANA_INDEX_PREFIX}?overwrite=true" -H 'kbn-xsrf: true' -H 'Content-Type: application/json' --data-binary @reports/v14-observability-import/data-view.json -o reports/v14-observability-import/kibana-data-view.json || true
+                        node - <<'NODE'
+const fs = require('fs');
+const prefix = process.env.V14_KIBANA_INDEX_PREFIX || 'jenkins-v14-intelligence';
+const oldVisualizations = [
+  'intelligence-score', 'risk-score', 'recovery-score', 'stage-status', 'category-donut',
+  'risk-category', 'risk-layer', 'playbook-area', 'node-ready', 'layer-health',
+  'stage-score', 'risk-severity', 'playbook-priority', 'event-trend', 'latest-records',
+  'risk-ledger', 'playbook-ledger', 'runtime-ledger'
+];
+const oldDashboards = ['platform-intelligence-unified', 'platform-intelligence-drilldown'];
+const objects = [
+  ...oldVisualizations.map((id) => `visualization/${prefix}-${id}`),
+  ...oldDashboards.map((id) => `dashboard/${prefix}-${id}`),
+];
+fs.writeFileSync('reports/v14-observability-import/kibana-auto-delete-list.txt', objects.join('\\n') + '\\n');
+NODE
+                        while read -r object_path; do
+                          [ -n "$object_path" ] || continue
+                          type="${object_path%%/*}"
+                          object_id="${object_path#*/}"
+                          curl -fsS -X DELETE "${KB_URL}/api/saved_objects/${type}/${object_id}" -H 'kbn-xsrf: true' -o "reports/v14-observability-import/delete-${type}-${object_id}.json" || true
+                        done < reports/v14-observability-import/kibana-auto-delete-list.txt
                         curl -fsS -X POST "${KB_URL}/api/saved_objects/_import?overwrite=true" -H 'kbn-xsrf: true' -F file=@reports/v14-kibana-dashboard.ndjson -o reports/v14-observability-import/kibana-saved-object-import.json || true
                         cat > reports/v14-observability-import/grafana-v14-datasource.json <<EOF2
 {"name":"Jenkins V14 Intelligence Elasticsearch","uid":"jenkins-v14-intelligence-es","type":"elasticsearch","access":"proxy","url":"${ES_URL}","basicAuth":false,"isDefault":false,"jsonData":{"esVersion":"8.0.0","index":"${V14_KIBANA_INDEX_PREFIX}-*","timeField":"@timestamp","logMessageField":"message","logLevelField":"severity"}}
