@@ -494,22 +494,24 @@ spec:
 EOF2
                             if timeout 25s kubectl get --raw=/readyz >/tmp/v14-k8s-readyz.txt 2>&1; then
                               cp /tmp/v14-k8s-readyz.txt reports/v14-portal/k8s-readyz.txt
-                              for attempt in 1 2 3 4 5; do
-                                if kubectl apply --validate=false -f reports/v14-portal/k8s.yaml; then
-                                  break
-                                fi
-                                echo "kubectl apply failed, retry attempt=${attempt}" >&2
-                                sleep $((attempt * 8))
-                                test "$attempt" != "5"
-                              done
-                              if ! kubectl -n ${V14_PORTAL_NAMESPACE} rollout status deploy/${V14_PORTAL_SERVICE_NAME} --timeout=300s; then
-                                echo "k8s rollout did not complete; public fallback container will serve 127.0.0.1:30090" | tee reports/v14-portal/k8s-rollout-fallback.warning
-                                start_fallback "k8s rollout timeout"
-                              fi
                             else
                               cp /tmp/v14-k8s-readyz.txt reports/v14-portal/k8s-readyz.failed.txt || true
-                              echo "k8s API not ready; public fallback container will serve 127.0.0.1:30090" | tee reports/v14-portal/k8s-notready-fallback.warning
-                              start_fallback "k8s readyz failed"
+                              echo "k8s readyz timed out; still attempting non-destructive apply with retries before fallback" | tee reports/v14-portal/k8s-readyz.warning
+                            fi
+                            APPLY_OK=false
+                            for attempt in 1 2 3 4 5 6; do
+                              if timeout 90s kubectl apply --validate=false -f reports/v14-portal/k8s.yaml; then
+                                APPLY_OK=true
+                                break
+                              fi
+                              echo "kubectl apply failed, retry attempt=${attempt}" >&2
+                              sleep $((attempt * 8))
+                            done
+                            if [ "$APPLY_OK" = "true" ] && kubectl -n ${V14_PORTAL_NAMESPACE} rollout status deploy/${V14_PORTAL_SERVICE_NAME} --timeout=420s; then
+                              docker rm -f zhanglab-v14-portal-fallback >/dev/null 2>&1 || true
+                            else
+                              echo "k8s rollout did not complete; public fallback container will serve 127.0.0.1:30090" | tee reports/v14-portal/k8s-rollout-fallback.warning
+                              start_fallback "k8s apply or rollout timeout"
                             fi
                         '''
                     } else {
@@ -532,20 +534,20 @@ EOF2
                           test -s "$output" && tail -c 500 "$output" >&2 || true
                           return 1
                         }
-                        if wait_for_marker "http://192.168.1.58:${V14_PORTAL_NODEPORT}/" 'v14-sonic-command-20260601' reports/v14-portal/internal.verify.html; then
+                        if wait_for_marker "http://192.168.1.58:${V14_PORTAL_NODEPORT}/" 'Big Data Application Lab' reports/v14-portal/internal.verify.html; then
+                          grep -q 'v14-sonic-command-20260601' reports/v14-portal/internal.verify.html
                           grep -q 'AudioContext' reports/v14-portal/internal.verify.html
                           grep -q 'Sound ON' reports/v14-portal/internal.verify.html
                           grep -q 'sound-rev-v2' reports/v14-portal/internal.verify.html
-                          grep -q 'Big Data Application Lab' reports/v14-portal/internal.verify.html
                           wait_for_marker "http://192.168.1.58:${V14_PORTAL_NODEPORT}/evidence.json" 'intelligenceScore' reports/v14-portal/evidence.verify.json
                         else
                           echo "internal NodePort verification failed; checking Cloudflare public fallback" | tee reports/v14-portal/internal.verify.warning
                         fi
-                        if wait_for_marker "https://${CLOUDFLARE_PUBLIC_HOSTNAME}/" 'v14-sonic-command-20260601' reports/v14-portal/public.verify.html; then
+                        if wait_for_marker "https://${CLOUDFLARE_PUBLIC_HOSTNAME}/" 'Big Data Application Lab' reports/v14-portal/public.verify.html; then
+                          grep -q 'v14-sonic-command-20260601' reports/v14-portal/public.verify.html
                           grep -q 'AudioContext' reports/v14-portal/public.verify.html
                           grep -q 'Sound ON' reports/v14-portal/public.verify.html
                           grep -q 'sound-rev-v2' reports/v14-portal/public.verify.html
-                          grep -q 'Big Data Application Lab' reports/v14-portal/public.verify.html
                           wait_for_marker "https://${CLOUDFLARE_PUBLIC_HOSTNAME}/evidence.json" 'intelligenceScore' reports/v14-portal/public-evidence.verify.json
                         else
                           echo "public hostname verification failed inside Jenkins; checking local Cloudflare origin bridge 127.0.0.1:30087" | tee reports/v14-portal/public.verify.warning
