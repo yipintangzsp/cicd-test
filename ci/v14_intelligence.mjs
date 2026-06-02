@@ -114,10 +114,25 @@ function servicePortSummary(service) {
   return (service?.spec?.ports || []).map((port) => [port.name, port.port, port.nodePort].filter(Boolean).join(':')).join(', ');
 }
 function buildDataPlatformModel(evidence) {
-  const pods = k8sItems('meta/v14-pods-live.json');
-  const services = k8sItems('meta/v14-services-live.json');
-  const endpoints = k8sItems('meta/v14-endpoints-live.json');
-  const workloads = k8sItems('meta/v14-workloads-live.json');
+  const podCapture = readJson('meta/v14-pods-live.json', { items: [] });
+  const serviceCapture = readJson('meta/v14-services-live.json', { items: [] });
+  const endpointCapture = readJson('meta/v14-endpoints-live.json', { items: [] });
+  const workloadCapture = readJson('meta/v14-workloads-live.json', { items: [] });
+  const inheritedDataPlatform = evidence.dataPlatform && Array.isArray(evidence.dataPlatform.apps) ? evidence.dataPlatform : null;
+  const criticalLiveCaptureFailed = [podCapture, serviceCapture, endpointCapture].some((capture) => capture.captureWarning && !(capture.items || []).length);
+  if (criticalLiveCaptureFailed && inheritedDataPlatform) {
+    return {
+      ...inheritedDataPlatform,
+      summary: {
+        ...(inheritedDataPlatform.summary || {}),
+        evidenceSource: 'inherited-portal-baseline-due-live-capture-timeout',
+      },
+    };
+  }
+  const pods = Array.isArray(podCapture.items) ? podCapture.items : [];
+  const services = Array.isArray(serviceCapture.items) ? serviceCapture.items : [];
+  const endpoints = Array.isArray(endpointCapture.items) ? endpointCapture.items : [];
+  const workloads = Array.isArray(workloadCapture.items) ? workloadCapture.items : [];
   const endpointMap = new Map(endpoints.map((endpoint) => [`${k8sNamespace(endpoint)}/${k8sName(endpoint)}`, endpoint]));
   const apps = dataPlatformCatalog.map((app) => {
     const appPods = pods.filter((pod) => matchesApp(pod, app));
