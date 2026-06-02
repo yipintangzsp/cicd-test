@@ -102,6 +102,8 @@ def refreshWorkspace = {
     if (env.JOB_NAME == 'github-cicd-test') {
         sh '''
             set -eux
+            git --git-dir=/var/jenkins_home/github-cache/cicd-test.git remote set-url origin https://github.com/yipintangzsp/cicd-test.git
+            git --git-dir=/var/jenkins_home/github-cache/cicd-test.git fetch --prune origin +refs/heads/main:refs/heads/main
             git clone /var/jenkins_home/github-cache/cicd-test.git .
             git checkout -f main
             git remote set-url origin https://github.com/yipintangzsp/cicd-test.git
