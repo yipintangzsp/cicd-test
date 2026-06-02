@@ -25,6 +25,9 @@ def v14Stages = [
     ['14.20 Worker 节点保护评分', 'worker-node-protection'],
     ['14.21 Node Ready 趋势证据', 'node-ready-trend'],
     ['14.22 Node 资源水位证据', 'node-resource-watermark'],
+    ['14.22.1 Metrics API 升级门禁', 'metrics-api-upgrade-gate'],
+    ['14.22.2 节点版本偏差门禁', 'node-version-skew-gate'],
+    ['14.22.3 Probe Timeout 压力门禁', 'probe-timeout-upgrade-gate'],
     ['14.23 Pod 调度分布评分', 'pod-placement-score'],
     ['14.24 Pod 重启压力评分', 'pod-restart-pressure'],
     ['14.25 Endpoint 缺口评分', 'endpoint-gap-score'],
@@ -200,8 +203,10 @@ NODE
                         capture_json workloads meta/v14-workloads-live.json kubectl get deploy,statefulset,daemonset -A
                         capture_json nodes meta/v14-nodes-live.json kubectl get nodes
                         capture_json events meta/v14-events-live.json kubectl get events -A --sort-by=.lastTimestamp
+                        capture_json metricsapiservice meta/v14-metrics-apiservice.json kubectl get apiservice v1beta1.metrics.k8s.io
                         capture_json pvc meta/v14-pvc-live.json kubectl get pvc -A
                         capture_json pv meta/v14-pv-live.json kubectl get pv
+                        kubectl version -o json > meta/v14-kubernetes-version.json 2>&1 || true
                         kubectl top nodes --no-headers > meta/v14-node-top.txt 2>&1 || true
                         kubectl top pods -A --no-headers > meta/v14-pod-top.txt 2>&1 || true
                     '''
