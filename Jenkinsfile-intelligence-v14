@@ -341,9 +341,13 @@ const oldVisualizations = [
   'intelligence-score', 'risk-score', 'recovery-score', 'stage-status', 'category-donut',
   'risk-category', 'risk-layer', 'playbook-area', 'node-ready', 'layer-health',
   'stage-score', 'risk-severity', 'playbook-priority', 'event-trend', 'latest-records',
-  'risk-ledger', 'playbook-ledger', 'runtime-ledger'
+  'risk-ledger', 'playbook-ledger', 'runtime-ledger',
+  ...Array.from({ length: 18 }, (_, index) => `deep-lens-${index + 1}`)
 ];
-const oldDashboards = ['platform-intelligence-unified', 'platform-intelligence-drilldown'];
+const oldDashboards = [
+  'platform-intelligence-unified', 'platform-intelligence-drilldown',
+  'command', 'risk', 'recovery', 'data', 'observability', 'executive'
+];
 const objects = [
   ...oldVisualizations.map((id) => `visualization/${prefix}-${id}`),
   ...oldDashboards.map((id) => `dashboard/${prefix}-${id}`),
