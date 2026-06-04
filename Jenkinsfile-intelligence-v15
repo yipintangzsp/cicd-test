@@ -144,6 +144,12 @@ def v15Stages = [
     ['15.127 V15 大数据深度评分', 'v15-bigdata-depth-score'],
     ['15.128 V15 复杂度提升证明', 'v15-complexity-lift-proof'],
     ['15.129 V15 运行证据完整性', 'v15-evidence-integrity'],
+    ['15.130.1 全软件自动发现目录', 'software-discovery-catalog'],
+    ['15.130.2 Kubernetes Helm Docker 镜像全覆盖', 'software-runtime-image-coverage'],
+    ['15.130.3 DevOps 工具链使用证明', 'software-devops-toolchain-proof'],
+    ['15.130.4 大数据软件链路全覆盖', 'software-bigdata-toolchain-proof'],
+    ['15.130.5 观测安全恢复软件全覆盖', 'software-observability-security-proof'],
+    ['15.130.6 未覆盖软件缺口队列', 'software-coverage-gap-queue'],
     ['15.130 V16 新纪元预案', 'v16-era-plan'],
 ]
 
@@ -256,9 +262,22 @@ NODE
                         capture_json metricsapiservice meta/v15-metrics-apiservice.json kubectl get apiservice v1beta1.metrics.k8s.io
                         capture_json pvc meta/v15-pvc-live.json kubectl get pvc -A
                         capture_json pv meta/v15-pv-live.json kubectl get pv
+                        capture_json namespaces meta/v15-namespaces-live.json kubectl get ns
+                        capture_json ingress meta/v15-ingress-live.json kubectl get ingress -A
+                        capture_json configmaps meta/v15-configmaps-live.json kubectl get cm -A
+                        capture_json serviceaccounts meta/v15-serviceaccounts-live.json kubectl get sa -A
+                        capture_json storageclasses meta/v15-storageclasses-live.json kubectl get storageclass
+                        capture_json argocdapps meta/v15-argocd-applications-live.json kubectl get applications.argoproj.io -A
+                        capture_json servicemonitors meta/v15-service-monitors-live.json kubectl get servicemonitor,podmonitor -A
+                        capture_json sparkapplications meta/v15-spark-applications-live.json kubectl get sparkapplications.sparkoperator.k8s.io -A
+                        capture_json flinkdeployments meta/v15-flink-deployments-live.json kubectl get flinkdeployments.flink.apache.org -A
                         kubectl version -o json > meta/v15-kubernetes-version.json 2>&1 || true
                         kubectl top nodes --no-headers > meta/v15-node-top.txt 2>&1 || true
                         kubectl top pods -A --no-headers > meta/v15-pod-top.txt 2>&1 || true
+                        helm list -A -o json > meta/v15-helm-releases.json 2>meta/v15-helm-releases.err || printf '[]\n' > meta/v15-helm-releases.json
+                        docker images --format '{{json .}}' > meta/v15-docker-images.ndjson 2>meta/v15-docker-images.err || true
+                        crictl images -o json > meta/v15-crictl-images.json 2>meta/v15-crictl-images.err || printf '{"images":[]}\n' > meta/v15-crictl-images.json
+                        ctr -n k8s.io images list -q > meta/v15-containerd-images.txt 2>meta/v15-containerd-images.err || true
                     '''
                 }
 
@@ -309,6 +328,8 @@ NODE
                         test -s reports/v15-devops-optimization.ndjson
                         test -s reports/v15-autonomous-ops.json
                         test -s reports/v15-autonomous-ops.ndjson
+                        test -s reports/v15-software-coverage.json
+                        test -s reports/v15-software-coverage.ndjson
                         test -s reports/v15-observability.ndjson
                         test -s reports/v15-grafana-dashboard.json
                         test -s reports/v15-kibana-dashboard.ndjson
@@ -383,9 +404,15 @@ NODE
       "finops_score": { "type": "double" },
       "incident_readiness_score": { "type": "double" },
       "bigdata_depth_score": { "type": "double" },
+      "software_coverage_score": { "type": "double" },
       "severity": { "type": "double" },
       "priority": { "type": "long" },
       "rto_minutes": { "type": "long" },
+      "catalog_total": { "type": "long" },
+      "observed_catalog_total": { "type": "long" },
+      "covered_catalog_total": { "type": "long" },
+      "missing_catalog_total": { "type": "long" },
+      "discovered_uncataloged_total": { "type": "long" },
       "control_plane_pods": { "type": "long" },
       "worker_pods": { "type": "long" },
       "control_pod_share": { "type": "double" },
@@ -399,9 +426,13 @@ NODE
       "total_pods": { "type": "long" },
       "restarts": { "type": "long" },
       "services": { "type": "long" },
+      "workloads": { "type": "long" },
+      "images": { "type": "long" },
+      "helm_releases": { "type": "long" },
       "endpoints_ready": { "type": "long" },
       "endpoints_total": { "type": "long" },
       "ready": { "type": "boolean" },
+      "observed": { "type": "boolean" },
       "worker_idle": { "type": "boolean" },
       "metrics_scrape_timeout": { "type": "boolean" },
       "safe_mode": { "type": "boolean" },
