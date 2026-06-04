@@ -2,6 +2,7 @@
 // historical Jenkinsfile selectable, newest first.
 
 def pipelineVersions = [
+    'Jenkinsfile-intelligence-v15',
     'Jenkinsfile-intelligence-v14',
     'Jenkinsfile-epoch-v13',
     'Jenkinsfile-expert-v12',
@@ -56,6 +57,16 @@ properties([
         string(name: 'V14_PORTAL_SERVICE_NAME', defaultValue: 'platform-era-v13-portal', description: '[v14] Reuse the current public portal service unless intentionally separated.'),
         string(name: 'V14_PORTAL_APP_LABEL', defaultValue: 'platform-era-v13-portal', description: '[v14] Portal pod label used by the service selector.'),
         string(name: 'V14_PORTAL_NODEPORT', defaultValue: '30089', description: '[v14] Public portal NodePort behind Cloudflare.'),
+        booleanParam(name: 'V15_PUBLISH_PORTAL', defaultValue: true, description: '[v15] Publish the V15 autonomous DataOps portal.'),
+        booleanParam(name: 'V15_IMPORT_OBSERVABILITY_ASSETS', defaultValue: true, description: '[v15] Import V15 Elasticsearch, Kibana and Grafana autonomous assets.'),
+        booleanParam(name: 'V15_STRICT_RISK_GATE', defaultValue: false, description: '[v15] Keep false unless high-risk findings should fail the build.'),
+        booleanParam(name: 'V15_RUN_V14_FOUNDATION', defaultValue: false, description: '[v15] Default false: inherit live V14 evidence instead of rerunning full V14.'),
+        string(name: 'V15_GRAFANA_DASHBOARD_TITLE', defaultValue: 'ZhangLab V15 Autonomous DataOps Intelligence', description: '[v15] Grafana dashboard title.'),
+        string(name: 'V15_KIBANA_INDEX_PREFIX', defaultValue: 'jenkins-v15-autonomous', description: '[v15] Kibana/Elasticsearch index prefix.'),
+        string(name: 'V15_PORTAL_NAMESPACE', defaultValue: 'ns-apps', description: '[v15] Portal namespace.'),
+        string(name: 'V15_PORTAL_SERVICE_NAME', defaultValue: 'platform-era-v13-portal', description: '[v15] Reuse public portal service unless intentionally separated.'),
+        string(name: 'V15_PORTAL_APP_LABEL', defaultValue: 'platform-era-v13-portal', description: '[v15] Portal pod label used by the service selector.'),
+        string(name: 'V15_PORTAL_NODEPORT', defaultValue: '30089', description: '[v15] Public portal NodePort behind Cloudflare.'),
         string(name: 'CLOUDFLARE_PUBLIC_HOSTNAME', defaultValue: 'platform.heil.ccwu.cc', description: '[v13] Cloudflare public hostname.'),
         string(name: 'CLOUDFLARE_TUNNEL_SECRET', defaultValue: 'cloudflare-v11-tunnel-token', description: '[v13] Kubernetes Secret containing Cloudflare Tunnel token.'),
         string(name: 'CLOUDFLARE_TUNNEL_IMAGE', defaultValue: '127.0.0.1:30050/library/cloudflared:2026.5.0', description: '[v13] Pinned local Cloudflare Tunnel image.')
@@ -65,7 +76,7 @@ properties([
 node {
     stage('Select GitHub Jenkinsfile') {
         checkout scm
-        def rawSelected = (params.PIPELINE_VERSION ?: 'Jenkinsfile-intelligence-v14').trim()
+        def rawSelected = (params.PIPELINE_VERSION ?: 'Jenkinsfile-intelligence-v15').trim()
         def selected = rawSelected == 'Jenkinsfile' ? 'Jenkinsfile-epoch-v13' : rawSelected
         if (!pipelineVersions.contains(selected)) {
             error "Unsupported PIPELINE_VERSION: ${selected}"

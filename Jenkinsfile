@@ -1,6 +1,8 @@
 // GitHub entrypoint: keep every independent pipeline version visible, newest first.
 
 def pipelineVersions = [
+    'Jenkinsfile-intelligence-v15',
+    'Jenkinsfile-intelligence-v14',
     'Jenkinsfile-epoch-v13',
     'Jenkinsfile-expert-v12',
     'Jenkinsfile-expert-v11',
@@ -41,7 +43,7 @@ node {
         } else {
             echo 'GitHub workspace already prepared by the Jenkins wrapper.'
         }
-        def rawSelected = (params.PIPELINE_VERSION ?: 'Jenkinsfile-epoch-v13').trim()
+        def rawSelected = (params.PIPELINE_VERSION ?: 'Jenkinsfile-intelligence-v15').trim()
         def selected = rawSelected == 'Jenkinsfile' ? 'Jenkinsfile-epoch-v13' : rawSelected
         if (!pipelineVersions.contains(selected)) {
             error "Unsupported PIPELINE_VERSION: ${selected}"
