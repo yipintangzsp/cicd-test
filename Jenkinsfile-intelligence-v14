@@ -28,6 +28,10 @@ def v14Stages = [
     ['14.22.1 Metrics API 升级门禁', 'metrics-api-upgrade-gate'],
     ['14.22.2 节点版本偏差门禁', 'node-version-skew-gate'],
     ['14.22.3 Probe Timeout 压力门禁', 'probe-timeout-upgrade-gate'],
+    ['14.22.4 DevOps 控制面压力量化', 'devops-control-plane-pressure'],
+    ['14.22.5 Worker 空闲容量画像', 'worker-idle-capacity-profile'],
+    ['14.22.6 无状态迁移候选清单', 'stateless-migration-candidates'],
+    ['14.22.7 Metrics Scrape 稳定性', 'metrics-scrape-stability'],
     ['14.23 Pod 调度分布评分', 'pod-placement-score'],
     ['14.24 Pod 重启压力评分', 'pod-restart-pressure'],
     ['14.25 Endpoint 缺口评分', 'endpoint-gap-score'],
@@ -255,6 +259,8 @@ NODE
                         node ci/v14_intelligence.mjs lint
                         test -s reports/v14-data-platform-apps.json
                         test -s reports/v14-data-platform-apps.ndjson
+                        test -s reports/v14-devops-optimization.json
+                        test -s reports/v14-devops-optimization.ndjson
                         test -s reports/v14-observability.ndjson
                         test -s reports/v14-grafana-dashboard.json
                         test -s reports/v14-kibana-dashboard.ndjson
@@ -324,15 +330,27 @@ NODE
       "recovery_score": { "type": "double" },
       "observability_score": { "type": "double" },
       "data_platform_score": { "type": "double" },
+      "devops_optimization_score": { "type": "double" },
       "severity": { "type": "double" },
       "priority": { "type": "long" },
+      "control_plane_pods": { "type": "long" },
+      "worker_pods": { "type": "long" },
+      "control_pod_share": { "type": "double" },
+      "stateless_candidates": { "type": "long" },
+      "pod_count": { "type": "long" },
+      "restart_total": { "type": "long" },
+      "pressure_events": { "type": "long" },
+      "cpu_allocatable_millicores": { "type": "long" },
+      "memory_allocatable_mi": { "type": "long" },
       "ready_pods": { "type": "long" },
       "total_pods": { "type": "long" },
       "restarts": { "type": "long" },
       "services": { "type": "long" },
       "endpoints_ready": { "type": "long" },
       "endpoints_total": { "type": "long" },
-      "ready": { "type": "boolean" }
+      "ready": { "type": "boolean" },
+      "worker_idle": { "type": "boolean" },
+      "metrics_scrape_timeout": { "type": "boolean" }
     }
   }
 }
