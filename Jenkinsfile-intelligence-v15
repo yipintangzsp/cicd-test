@@ -723,6 +723,37 @@ EOF2
                           fi
                         fi
                         timeout 20s kubectl get deploy,svc -n ${V15_PORTAL_NAMESPACE} -l app.kubernetes.io/name=${V15_PORTAL_APP_LABEL} -o wide | tee reports/v15-portal/k8s-live.txt || true
+                        curl -fsS --max-time 20 "https://${CLOUDFLARE_PUBLIC_HOSTNAME}/evidence.json" -o reports/v15-portal/public-current-evidence.json || true
+                        node - <<'NODE'
+const fs = require('fs');
+function readJson(file) {
+  try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return null; }
+}
+const generated = readJson('reports/v15-portal/evidence.json') || {};
+const publicEvidence = readJson('reports/v15-portal/public-current-evidence.json') || {};
+const generatedSummary = generated.summary || {};
+const publicSummary = publicEvidence.summary || {};
+const generatedVersion = generatedSummary.pipeline_version || generatedSummary.pipelineVersion || 'unknown';
+const publicVersion = publicSummary.pipeline_version || publicSummary.pipelineVersion || 'unknown';
+const generatedBuild = generatedSummary.build || 'unknown';
+const publicBuild = publicSummary.build || 'unknown';
+const diagnosis = {
+  publicHost: process.env.CLOUDFLARE_PUBLIC_HOSTNAME,
+  internalNodePort: process.env.V15_PORTAL_NODEPORT,
+  generatedVersion,
+  generatedBuild,
+  publicVersion,
+  publicBuild,
+  state: generatedVersion === publicVersion ? 'aligned' : 'public-route-stale',
+  action: generatedVersion === publicVersion
+    ? 'No public route action needed.'
+    : 'Public hostname still serves an older portal. Update the Cloudflare tunnel/origin route to the V15 NodePort or publish service.'
+};
+fs.writeFileSync('reports/v15-portal/public-route-diagnosis.json', JSON.stringify(diagnosis, null, 2) + '\\n');
+console.log('public_route_state=' + diagnosis.state);
+console.log('public_route_generated=' + diagnosis.generatedVersion + '#' + diagnosis.generatedBuild);
+console.log('public_route_current=' + diagnosis.publicVersion + '#' + diagnosis.publicBuild);
+NODE
                     '''
                 }
 
