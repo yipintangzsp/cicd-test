@@ -1,5 +1,5 @@
-// GitHub pipeline router. This job is independent from hello-app and keeps every
-// historical Jenkinsfile selectable, newest first.
+// Stable entrypoint for selecting an independent Jenkinsfile version.
+// The selected Jenkinsfile remains self-contained and is loaded after checkout.
 
 def pipelineVersions = [
     'Jenkinsfile-intelligence-v15',
@@ -17,25 +17,55 @@ def pipelineVersions = [
     'Jenkinsfile-expert-v4',
     'Jenkinsfile-expert-v3',
     'Jenkinsfile-expert-v2',
-    'Jenkinsfile-v2-tested',
-    'Jenkinsfile_v2',
-    'Jenkinsfile-v1'
+    'Jenkinsfile'
 ]
 
 properties([
     disableConcurrentBuilds(),
-    buildDiscarder(logRotator(numToKeepStr: '45', artifactNumToKeepStr: '30')),
-    pipelineTriggers([githubPush(), pollSCM('* * * * *')]),
+    buildDiscarder(logRotator(numToKeepStr: '30', artifactNumToKeepStr: '20')),
+    pipelineTriggers([
+        gitlab(
+            triggerOnPush: true,
+            triggerToBranchDeleteRequest: false,
+            triggerOnMergeRequest: false,
+            triggerOnlyIfNewCommitsPushed: true,
+            triggerOnPipelineEvent: false,
+            triggerOnAcceptedMergeRequest: false,
+            triggerOnClosedMergeRequest: false,
+            triggerOnApprovedMergeRequest: false,
+            triggerOpenMergeRequestOnPush: 'never',
+            triggerOnNoteRequest: false,
+            ciSkip: true,
+            skipWorkInProgressMergeRequest: true,
+            setBuildDescription: true,
+            branchFilterType: 'NameBasedFilter',
+            includeBranchesSpec: 'main',
+            excludeBranchesSpec: '',
+            sourceBranchRegex: '',
+            targetBranchRegex: '',
+            secretToken: 'hello-app-gitlab-webhook-20260521',
+            cancelPendingBuildsOnUpdate: false
+        )
+    ]),
     parameters([
-        choice(name: 'PIPELINE_VERSION', choices: pipelineVersions, description: 'Select GitHub pipeline version, newest first.'),
-        choice(name: 'DEPLOY_ENV', choices: ['dev', 'test', 'prod'], description: 'Target environment label.'),
-        booleanParam(name: 'DRY_RUN', defaultValue: false, description: 'Run build/publish path by default; enable only for validation-only execution.'),
-        booleanParam(name: 'RUN_UNIT_TESTS', defaultValue: true, description: 'Keep inherited build/test checks enabled.'),
-        booleanParam(name: 'RUN_SMOKE_TEST', defaultValue: true, description: 'Run smoke checks after evidence portal publication.'),
-        booleanParam(name: 'V13_PLATFORM_MATRIX', defaultValue: true, description: '[v13] Generate platform evidence matrix.'),
-        booleanParam(name: 'V13_PUBLISH_PORTAL', defaultValue: true, description: '[v13] Publish Cloudflare-ready governance portal.'),
+        choice(name: 'PIPELINE_VERSION', choices: pipelineVersions, description: 'Select Jenkinsfile version, newest first.'),
+        choice(name: 'DEPLOY_ENV', choices: ['dev', 'test', 'prod'], description: 'Target deployment environment.'),
+        booleanParam(name: 'SKIP_SECURITY_SCAN', defaultValue: false, description: 'Skip SonarQube and Trivy checks.'),
+        booleanParam(name: 'RUN_UNIT_TESTS', defaultValue: true, description: 'Run unit tests.'),
+        booleanParam(name: 'RUN_SMOKE_TEST', defaultValue: true, description: 'Run smoke checks after deploy.'),
+        booleanParam(name: 'DRY_RUN', defaultValue: false, description: 'Run the real build/deploy path by default; enable only when you want a validation-only run.'),
+        choice(name: 'FLINK_RUN_MODE', choices: ['run', 'skip'], description: 'Submit Flink job by default.'),
+        string(name: 'K8S_NAMESPACE', defaultValue: 'ns-apps', description: 'Kubernetes namespace for app deployment.'),
+        string(name: 'APP_HEALTH_URL', defaultValue: 'http://hello-app.ns-apps.svc.cluster.local/', description: 'Application health URL.'),
+        booleanParam(name: 'BUILD_JKVIDEO', defaultValue: true, description: 'Build JKVideo web/android artifacts.'),
+        string(name: 'JKVIDEO_REPO_URL', defaultValue: 'http://gitlab-service/root/JKVideo.git', description: 'JKVideo repository URL.'),
+        string(name: 'JKVIDEO_BRANCH', defaultValue: 'main', description: 'JKVideo branch.'),
+        choice(name: 'JKVIDEO_PLATFORMS', choices: ['web', 'android+web', 'android'], description: 'JKVideo target platforms.'),
+        booleanParam(name: 'JKVIDEO_RUN_JEST', defaultValue: true, description: 'Run JKVideo Jest tests.'),
+        booleanParam(name: 'V13_PLATFORM_MATRIX', defaultValue: true, description: '[v13] Generate governance-era platform evidence matrix.'),
+        booleanParam(name: 'V13_PUBLISH_PORTAL', defaultValue: true, description: '[v13] Publish independent V13 evidence portal.'),
         booleanParam(name: 'V13_RUN_PLATFORM_PROBES', defaultValue: true, description: '[v13] Probe every platform service and record evidence.'),
-        booleanParam(name: 'V13_STRICT_SERVICE_READY', defaultValue: false, description: '[v13] Fail on a service probe failure. Keep false for governance patrol.'),
+        booleanParam(name: 'V13_STRICT_SERVICE_READY', defaultValue: false, description: '[v13] Fail on a service probe failure.'),
         booleanParam(name: 'V13_IMPORT_OBSERVABILITY_ASSETS', defaultValue: true, description: '[v13] Import/push Elasticsearch, Kibana and Grafana evidence.'),
         booleanParam(name: 'V13_INCLUDE_RESOURCE_PROFILE', defaultValue: true, description: '[v13] Collect node/pod capacity evidence.'),
         booleanParam(name: 'V13_INCLUDE_POD_LOG_SAMPLE', defaultValue: true, description: '[v13] Collect bounded log samples from key services.'),
@@ -44,8 +74,8 @@ properties([
         string(name: 'V13_GRAFANA_DASHBOARD_TITLE', defaultValue: 'ZhangLab V13 Governance Era', description: '[v13] Grafana dashboard title.'),
         string(name: 'V13_KIBANA_INDEX_PREFIX', defaultValue: 'jenkins-v13-governance', description: '[v13] Kibana/Elasticsearch index prefix.'),
         string(name: 'V13_PORTAL_NAMESPACE', defaultValue: 'ns-apps', description: '[v13] Evidence portal namespace.'),
-        string(name: 'V13_PORTAL_NODEPORT', defaultValue: '30089', description: '[v13] Existing public portal NodePort.'),
-        booleanParam(name: 'V13_REQUIRE_CLOUDFLARE_PUBLICATION', defaultValue: true, description: '[v13] Fail when Cloudflare public portal cannot be verified.'),
+        string(name: 'V13_PORTAL_NODEPORT', defaultValue: '30089', description: '[v13] Independent evidence portal NodePort; 30087 is V12 and 30088 is jkvideo.'),
+        booleanParam(name: 'V13_REQUIRE_CLOUDFLARE_PUBLICATION', defaultValue: false, description: '[v13] Keep false unless intentionally moving Cloudflare to V13.'),
         booleanParam(name: 'V13_REQUIRE_NO_IDLE_CORE_SERVICE', defaultValue: false, description: '[v13] Fail when suspicious idle core service is found.'),
         booleanParam(name: 'V14_PUBLISH_PORTAL', defaultValue: true, description: '[v14] Publish the V14 platform intelligence hypergrid portal.'),
         booleanParam(name: 'V14_IMPORT_OBSERVABILITY_ASSETS', defaultValue: true, description: '[v14] Import V14 Elasticsearch, Kibana and Grafana intelligence assets.'),
@@ -67,17 +97,19 @@ properties([
         string(name: 'V15_PORTAL_SERVICE_NAME', defaultValue: 'platform-era-v13-portal', description: '[v15] Reuse public portal service unless intentionally separated.'),
         string(name: 'V15_PORTAL_APP_LABEL', defaultValue: 'platform-era-v13-portal', description: '[v15] Portal pod label used by the service selector.'),
         string(name: 'V15_PORTAL_NODEPORT', defaultValue: '30089', description: '[v15] Public portal NodePort behind Cloudflare.'),
+        booleanParam(name: 'V15_PROMOTE_LEGACY_PUBLIC_NODEPORT', defaultValue: true, description: '[v15] Promote legacy Cloudflare-facing 30087 service to V15 after V15 portal is ready.'),
+        string(name: 'V15_LEGACY_PUBLIC_SERVICE_NAME', defaultValue: 'hello-app-v10-portal', description: '[v15] Existing service currently used by Cloudflare public route.'),
+        string(name: 'V15_LEGACY_PUBLIC_NODEPORT', defaultValue: '30087', description: '[v15] Existing public NodePort currently serving the Cloudflare route.'),
         string(name: 'CLOUDFLARE_PUBLIC_HOSTNAME', defaultValue: 'platform.heil.ccwu.cc', description: '[v13] Cloudflare public hostname.'),
         string(name: 'CLOUDFLARE_TUNNEL_SECRET', defaultValue: 'cloudflare-v11-tunnel-token', description: '[v13] Kubernetes Secret containing Cloudflare Tunnel token.'),
-        string(name: 'CLOUDFLARE_TUNNEL_IMAGE', defaultValue: '127.0.0.1:30050/library/cloudflared:2026.5.0', description: '[v13] Pinned local Cloudflare Tunnel image.')
+        string(name: 'CLOUDFLARE_TUNNEL_IMAGE', defaultValue: '127.0.0.1:30050/library/cloudflared:2026.5.0', description: '[v13] Cloudflare Tunnel local image with pinned tag.')
     ])
 ])
 
 node {
-    stage('Select GitHub Jenkinsfile') {
+    stage('Select Jenkinsfile') {
         checkout scm
-        def rawSelected = (params.PIPELINE_VERSION ?: 'Jenkinsfile-intelligence-v15').trim()
-        def selected = rawSelected == 'Jenkinsfile' ? 'Jenkinsfile-epoch-v13' : rawSelected
+        def selected = (params.PIPELINE_VERSION ?: 'Jenkinsfile-intelligence-v15').trim()
         if (!pipelineVersions.contains(selected)) {
             error "Unsupported PIPELINE_VERSION: ${selected}"
         }
@@ -85,7 +117,8 @@ node {
             error "Selected Jenkinsfile does not exist: ${selected}"
         }
         currentBuild.displayName = "#${env.BUILD_NUMBER} ${selected}"
-        currentBuild.description = "github-router=${selected}"
+        currentBuild.description = "router=${selected}"
+        echo "Dispatching to ${selected}"
         load selected
     }
 }

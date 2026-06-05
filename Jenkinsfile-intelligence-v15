@@ -195,6 +195,9 @@ def runV15 = {
                     env.V15_PORTAL_SERVICE_NAME = "${p('V15_PORTAL_SERVICE_NAME', p('V14_PORTAL_SERVICE_NAME', 'platform-era-v13-portal'))}"
                     env.V15_PORTAL_APP_LABEL = "${p('V15_PORTAL_APP_LABEL', 'platform-era-v13-portal')}"
                     env.V15_PORTAL_NODEPORT = "${p('V15_PORTAL_NODEPORT', p('V14_PORTAL_NODEPORT', p('V13_PORTAL_NODEPORT', '30089')))}"
+                    env.V15_PROMOTE_LEGACY_PUBLIC_NODEPORT = "${p('V15_PROMOTE_LEGACY_PUBLIC_NODEPORT', true)}"
+                    env.V15_LEGACY_PUBLIC_SERVICE_NAME = "${p('V15_LEGACY_PUBLIC_SERVICE_NAME', 'hello-app-v10-portal')}"
+                    env.V15_LEGACY_PUBLIC_NODEPORT = "${p('V15_LEGACY_PUBLIC_NODEPORT', '30087')}"
                     env.V15_KIBANA_INDEX_PREFIX = "${p('V15_KIBANA_INDEX_PREFIX', 'jenkins-v15-autonomous')}"
                     env.V15_GRAFANA_DASHBOARD_TITLE = "${p('V15_GRAFANA_DASHBOARD_TITLE', 'ZhangLab V15 Autonomous DataOps Intelligence')}"
                     env.V15_IMPORT_OBSERVABILITY_ASSETS = "${p('V15_IMPORT_OBSERVABILITY_ASSETS', true)}"
@@ -666,6 +669,62 @@ EOF2
                     } else {
                         sh "echo 'V15_PUBLISH_PORTAL=false' > reports/v15-portal/publish.disabled"
                     }
+                }
+
+                stage('V15.93.5 提升公网入口到 V15') {
+                    sh '''
+                        set -eu
+                        mkdir -p reports/v15-portal
+                        PROMOTE="${V15_PROMOTE_LEGACY_PUBLIC_NODEPORT:-true}"
+                        NS="${V15_PORTAL_NAMESPACE:-ns-apps}"
+                        LEGACY_SVC="${V15_LEGACY_PUBLIC_SERVICE_NAME:-hello-app-v10-portal}"
+                        LEGACY_NODEPORT="${V15_LEGACY_PUBLIC_NODEPORT:-30087}"
+                        TARGET_APP="${V15_PORTAL_APP_LABEL:-platform-era-v13-portal}"
+                        if [ "$PROMOTE" != "true" ]; then
+                          echo "V15_PROMOTE_LEGACY_PUBLIC_NODEPORT=false" | tee reports/v15-portal/public-promotion.disabled
+                          exit 0
+                        fi
+                        timeout 30s kubectl -n "$NS" get svc "$LEGACY_SVC" -o json > reports/v15-portal/public-promotion-before.json
+                        node - <<'NODE'
+const fs = require('fs');
+const service = JSON.parse(fs.readFileSync('reports/v15-portal/public-promotion-before.json', 'utf8'));
+const hadSelector = Object.prototype.hasOwnProperty.call(service.spec || {}, 'selector');
+const oldSelector = service.spec?.selector || {};
+const targetSelector = { 'app.kubernetes.io/name': process.env.V15_PORTAL_APP_LABEL || 'platform-era-v13-portal' };
+const patch = [{ op: hadSelector ? 'replace' : 'add', path: '/spec/selector', value: targetSelector }];
+const rollback = hadSelector
+  ? [{ op: 'replace', path: '/spec/selector', value: oldSelector }]
+  : [{ op: 'remove', path: '/spec/selector' }];
+const nodePort = process.env.V15_LEGACY_PUBLIC_NODEPORT || '30087';
+const summary = {
+  namespace: process.env.V15_PORTAL_NAMESPACE || 'ns-apps',
+  service: process.env.V15_LEGACY_PUBLIC_SERVICE_NAME || 'hello-app-v10-portal',
+  nodePort,
+  oldSelector,
+  targetSelector,
+  reason: 'Promote existing Cloudflare-facing NodePort service to the V15 portal without changing Cloudflare DNS/tunnel settings.',
+  rollbackCommand: `kubectl -n ${process.env.V15_PORTAL_NAMESPACE || 'ns-apps'} patch svc ${process.env.V15_LEGACY_PUBLIC_SERVICE_NAME || 'hello-app-v10-portal'} --type json -p '${JSON.stringify(rollback)}'`
+};
+fs.writeFileSync('reports/v15-portal/public-promotion-patch.json', JSON.stringify(patch));
+fs.writeFileSync('reports/v15-portal/public-promotion-rollback.json', JSON.stringify(rollback));
+fs.writeFileSync('reports/v15-portal/public-promotion-plan.json', JSON.stringify(summary, null, 2) + '\\n');
+console.log('public_promotion_target=' + JSON.stringify(targetSelector));
+console.log('public_promotion_rollback=' + summary.rollbackCommand);
+NODE
+                        kubectl -n "$NS" patch svc "$LEGACY_SVC" --type json -p "$(cat reports/v15-portal/public-promotion-patch.json)"
+                        timeout 30s kubectl -n "$NS" get svc "$LEGACY_SVC" -o json > reports/v15-portal/public-promotion-after.json
+                        for attempt in $(seq 1 30); do
+                          if curl -fsS --max-time 10 "http://192.168.1.58:${LEGACY_NODEPORT}/evidence.json" -o reports/v15-portal/legacy-public-nodeport-evidence.json &&
+                             node -e "const e=JSON.parse(require('fs').readFileSync('reports/v15-portal/legacy-public-nodeport-evidence.json','utf8')); const v=e.summary?.pipeline_version||e.summary?.pipelineVersion; if(v !== 'v15'){console.error('legacy_public_nodeport_version='+v); process.exit(1)} console.log('legacy_public_nodeport_version='+v);"; then
+                            echo "legacy_public_nodeport_promoted=true" | tee reports/v15-portal/public-promotion-result.txt
+                            exit 0
+                          fi
+                          sleep 3
+                        done
+                        echo "legacy public NodePort did not return V15 after selector promotion" | tee reports/v15-portal/public-promotion.failed
+                        cat reports/v15-portal/public-promotion-plan.json
+                        exit 1
+                    '''
                 }
 
                 stage('V15.94 V15 成果验证') {
