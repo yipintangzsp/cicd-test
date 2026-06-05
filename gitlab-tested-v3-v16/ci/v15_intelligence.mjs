@@ -1,0 +1,1218 @@
+#!/usr/bin/env node
+import fs from 'node:fs';
+import path from 'node:path';
+
+const action = process.argv[2] || 'build';
+const checkKey = process.argv[3] || '';
+const checkTitle = process.argv.slice(4).join(' ') || checkKey;
+
+const env = process.env;
+const build = env.BUILD_NUMBER || '0';
+const job = env.JOB_NAME || 'local';
+const commit = env.GIT_COMMIT_ID || env.GIT_COMMIT || 'local';
+const semver = env.SEMVER || `0.0.${build}`;
+const publicHost = env.CLOUDFLARE_PUBLIC_HOSTNAME || env.V15_PUBLIC_HOSTNAME || 'platform.heil.ccwu.cc';
+const portalNodePort = env.V15_PORTAL_NODEPORT || env.V13_PORTAL_NODEPORT || '30089';
+const indexPrefix = env.V15_KIBANA_INDEX_PREFIX || 'jenkins-v15-autonomous';
+const grafanaTitle = env.V15_GRAFANA_DASHBOARD_TITLE || 'ZhangLab V15 Autonomous DataOps Intelligence';
+const now = () => new Date().toISOString();
+const write = (file, body) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, body, 'utf8'); };
+const append = (file, body) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.appendFileSync(file, body, 'utf8'); };
+const exists = (file) => fs.existsSync(file) && fs.statSync(file).size > 0;
+const readJson = (file, fallback = {}) => {
+  try { return exists(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : fallback; } catch { return fallback; }
+};
+const readLines = (file) => exists(file) ? fs.readFileSync(file, 'utf8').split('\n').filter(Boolean) : [];
+const clamp = (value, min = 0, max = 100) => Math.max(min, Math.min(max, Number.isFinite(Number(value)) ? Number(value) : 0));
+const escHtml = (value) => String(value == null ? '' : value).replace(/[&<>"']/g, (ch) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[ch]));
+const metricLabel = (value) => String(value == null ? '' : value).replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, ' ');
+const id = (value) => String(value).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 80) || 'item';
+
+function baseEvidence() {
+  for (const file of [
+    'reports/v15-baseline/v14-evidence.json',
+    'reports/v14-intelligence/evidence.json',
+    'reports/v14-portal/evidence.json',
+    'reports/v15-baseline/v13-evidence.json',
+    'reports/v13-portal/evidence.json',
+  ]) {
+    const evidence = readJson(file, {});
+    if (evidence.summary) return evidence;
+  }
+  return { summary: {}, pods: [], services: [], serviceProbes: [], riskEvents: [], layerSummary: [], namespaceSummary: [], nodes: [], dataLineage: [], jobMarketFit: [], spark: { pods: [], services: [], probes: [] } };
+}
+
+function classifyCheck(key) {
+  if (/guard|safety|policy|drift|approval/.test(key)) return 'governance';
+  if (/risk|restart|endpoint|failure|error|hotspot/.test(key)) return 'risk';
+  if (/restore|backup|pvc|pv|harbor|image|rollback/.test(key)) return 'recovery';
+  if (/grafana|kibana|elastic|log|prometheus|zabbix|loki|jaeger|otel|metric/.test(key)) return 'observability';
+  if (/autonomous|incident|finops|forecast|chaos|rto|rpo|burn|trust|noise|drift|signature/.test(key)) return 'autonomous-ops';
+  if (/software|toolchain|coverage-gap|catalog|runtime-image/.test(key)) return 'software-coverage';
+  if (/quality|freshness|checkpoint|savepoint|lag|retention|semantic|lifecycle|sla/.test(key)) return 'data-quality';
+  if (/spark|flink|kafka|airflow|trino|superset|minio|data/.test(key)) return 'data-platform';
+  if (/node|pod|service|endpoint|resource|capacity|schedule/.test(key)) return 'runtime';
+  if (/portal|cloudflare|front|ui|visual/.test(key)) return 'experience';
+  return 'intelligence';
+}
+
+function computeStageScore(key, evidence) {
+  const s = evidence.summary || {};
+  const riskCount = Number(s.riskEventTotal || (evidence.riskEvents || []).length || 0);
+  const critical = Number(s.criticalRiskEvents || (evidence.riskEvents || []).filter((r) => Number(r.severity || 0) >= 85).length || 0);
+  const serviceOk = Number(s.serviceProbeOk || 0);
+  const serviceTotal = Number(s.serviceProbeTotal || 0);
+  const podReady = Number(s.podReady || 0);
+  const podTotal = Number(s.podTotal || 0);
+  const restart = Number(s.restartTotal || 0);
+  let score = Number(s.platformHealthScore || 80);
+  if (/risk|restart|hotspot/.test(key)) score = clamp(100 - critical * 5 - Math.min(35, restart / 18));
+  if (/service|probe|endpoint/.test(key)) score = serviceTotal ? clamp((serviceOk / serviceTotal) * 100) : score;
+  if (/pod|runtime|schedule/.test(key)) score = podTotal ? clamp((podReady / podTotal) * 100 - Math.min(20, restart / 40)) : score;
+  if (/recovery|backup|restore|rollback/.test(key)) score = clamp(70 + (s.podCoverageComplete ? 12 : 0) + (serviceTotal && serviceOk === serviceTotal ? 10 : 0));
+  if (/experience|portal|cloudflare|visual/.test(key)) score = clamp(82 + (s.publicUrl ? 8 : 0) + (s.serviceProbeOk ? 5 : 0));
+  if (/spark|flink|kafka|airflow|trino|superset|minio|data|lineage|object-lake/.test(key)) {
+    const dataPlatform = buildDataPlatformModel(evidence);
+    const app = dataPlatform.apps.find((item) => key.includes(item.key.split('-')[0]) || key.includes(item.key));
+    score = app ? app.score : Number(dataPlatform.summary.score || score);
+  }
+  if (/autonomous|incident|finops|forecast|chaos|rto|rpo|burn|quality|freshness|checkpoint|savepoint|lag|retention|semantic|lifecycle|trust|noise|drift|signature/.test(key)) {
+    const dataPlatform = buildDataPlatformModel(evidence);
+    const telemetry = buildPlatformTelemetryModel();
+    const devops = buildDevopsOptimizationModel(telemetry);
+    const autonomous = buildAutonomousOpsModel(evidence, dataPlatform, telemetry, devops, [], []);
+    const dimension = autonomous.dimensions.find((item) => key.includes(item.key.split('-')[0]) || key.includes(item.key));
+    score = dimension ? dimension.score : autonomous.summary.score;
+  }
+  if (/software|toolchain|coverage-gap|catalog|runtime-image/.test(key)) {
+    score = buildSoftwareCoverageModel(evidence).summary.score;
+  }
+  return Math.round(score);
+}
+
+const dataPlatformCatalog = [
+  { key: 'spark-operator', label: 'Spark Operator', layer: 'compute', role: 'Batch job control plane', pattern: /spark-operator|spark/i, expected: 'SparkApplication admission and controller readiness' },
+  { key: 'flink', label: 'Flink Runtime', layer: 'stream', role: 'Streaming job runtime', pattern: /flink/i, expected: 'JobManager and TaskManager available' },
+  { key: 'kafka', label: 'Kafka Broker', layer: 'stream-bus', role: 'Event bus and Jenkins log transport', pattern: /(^|-)kafka($|-)|kafka-ui|filebeat-kafka/i, expected: 'Broker, UI and log shipping pods ready' },
+  { key: 'airflow', label: 'Airflow Orchestrator', layer: 'orchestration', role: 'DAG scheduling and data workflow trigger', pattern: /airflow/i, expected: 'Scheduler, triggerer, API and DAG processor ready' },
+  { key: 'trino', label: 'Trino Query Engine', layer: 'query', role: 'SQL federation over object/data stores', pattern: /trino/i, expected: 'Coordinator and worker ready' },
+  { key: 'superset', label: 'Superset BI', layer: 'analytics-ui', role: 'Business dashboard and exploration UI', pattern: /superset/i, expected: 'Web, worker and Redis dependency ready' },
+  { key: 'minio', label: 'MinIO Object Lake', layer: 'object-lake', role: 'Object storage for Spark/Flink/Trino evidence', pattern: /minio/i, expected: 'API and console service endpoints ready' },
+  { key: 'filebeat-kafka', label: 'Filebeat Kafka Bridge', layer: 'ingestion', role: 'Jenkins log transport into Kafka/Elasticsearch', pattern: /filebeat-kafka|jenkins-build-log-filebeat-kafka/i, expected: 'DaemonSet/deployment shippers ready on available nodes' },
+];
+
+const platformSoftwareCatalog = [
+  { key: 'k3s', label: 'K3s Kubernetes', domain: 'cluster-core', role: 'Cluster scheduler and API control plane', pattern: /k3s|kube-apiserver|kube-controller|kube-scheduler|kubelet|containerd/i, usage: 'runs every workload and exposes Kubernetes state to V15' },
+  { key: 'coredns', label: 'CoreDNS', domain: 'cluster-core', role: 'Cluster DNS resolution', pattern: /coredns|kube-dns/i, usage: 'service discovery for Jenkins probes and app-to-app traffic' },
+  { key: 'metrics-server', label: 'Metrics Server', domain: 'cluster-core', role: 'Resource metrics API', pattern: /metrics-server|metrics.k8s.io/i, usage: 'feeds node and pod resource watermarks' },
+  { key: 'cert-manager', label: 'cert-manager', domain: 'cluster-core', role: 'Certificate lifecycle', pattern: /cert-manager|certificate|issuer|acme/i, usage: 'keeps ingress and webhook certificates observable' },
+  { key: 'traefik-nginx', label: 'Ingress Controller', domain: 'network', role: 'HTTP ingress routing', pattern: /traefik|ingress-nginx|nginx-controller|nginx-ingress/i, usage: 'fronts internal services before Cloudflare tunnel' },
+  { key: 'cloudflared', label: 'Cloudflare Tunnel', domain: 'network', role: 'Public portal tunnel', pattern: /cloudflare|cloudflared|tunnel/i, usage: 'publishes platform.heil.ccwu.cc without exposing node ports directly' },
+  { key: 'jenkins', label: 'Jenkins', domain: 'devops', role: 'CI/CD orchestration', pattern: /jenkins/i, usage: 'runs V15, emits evidence, imports observability assets' },
+  { key: 'gitlab', label: 'GitLab', domain: 'devops', role: 'GitLab source repository and webhook trigger', pattern: /gitlab/i, usage: 'hosts GitLab pipeline versions and push trigger path' },
+  { key: 'github', label: 'GitHub', domain: 'devops', role: 'GitHub mirrored source repository', pattern: /github|cicd-test/i, usage: 'keeps public mirror of Jenkinsfile versions' },
+  { key: 'argocd', label: 'ArgoCD', domain: 'gitops', role: 'GitOps sync and drift detection', pattern: /argocd|applications.argoproj.io/i, usage: 'checks app health and drift evidence' },
+  { key: 'harbor', label: 'Harbor Registry', domain: 'registry', role: 'Local image registry and image recovery', pattern: /harbor|registry|trivy-adapter/i, usage: 'proves local image availability and recovery priority' },
+  { key: 'portainer', label: 'Portainer', domain: 'platform-ui', role: 'Container platform UI', pattern: /portainer/i, usage: 'included as a platform UI service; Kubernetes pod is preferred over Docker duplicate' },
+  { key: 'prometheus', label: 'Prometheus', domain: 'observability', role: 'Metrics storage and alert source', pattern: /prometheus|kube-state-metrics|node-exporter|alertmanager|servicemonitor|podmonitor/i, usage: 'backs Grafana and V15 Prometheus metric export' },
+  { key: 'grafana', label: 'Grafana', domain: 'observability', role: 'Metric dashboard', pattern: /grafana/i, usage: 'renders reusable platform intelligence dashboard' },
+  { key: 'elasticsearch', label: 'Elasticsearch', domain: 'observability', role: 'Log and event index', pattern: /elastic|elasticsearch/i, usage: 'stores Jenkins and V15 observability events' },
+  { key: 'kibana', label: 'Kibana', domain: 'observability', role: 'Log analytics dashboard', pattern: /kibana/i, usage: 'renders universal log/event dashboard' },
+  { key: 'filebeat', label: 'Filebeat', domain: 'observability', role: 'Log shipper', pattern: /filebeat|beats/i, usage: 'ships Jenkins and pod logs toward Kafka/Elasticsearch' },
+  { key: 'loki', label: 'Loki', domain: 'observability', role: 'Log aggregation', pattern: /loki|promtail/i, usage: 'alternative log evidence path when present' },
+  { key: 'jaeger', label: 'Jaeger', domain: 'observability', role: 'Trace visualization', pattern: /jaeger/i, usage: 'trace entry readiness evidence' },
+  { key: 'opentelemetry', label: 'OpenTelemetry', domain: 'observability', role: 'Trace/metric/log collector', pattern: /opentelemetry|otel-collector|otel/i, usage: 'telemetry collection and sampling readiness' },
+  { key: 'zabbix', label: 'Zabbix', domain: 'observability', role: 'Infrastructure monitoring', pattern: /zabbix/i, usage: 'asset and alert display evidence' },
+  { key: 'dingtalk', label: 'DingTalk Relay', domain: 'alerting', role: 'Notification relay', pattern: /dingtalk|ding-talk|钉钉/i, usage: 'pipeline notification route and alert proof' },
+  { key: 'sonarqube', label: 'SonarQube', domain: 'security-quality', role: 'Code quality gate', pattern: /sonar|sonarqube/i, usage: 'quality gate readiness' },
+  { key: 'trivy', label: 'Trivy', domain: 'security-quality', role: 'Image vulnerability scan', pattern: /trivy/i, usage: 'image and Harbor security coverage' },
+  { key: 'cosign', label: 'Cosign', domain: 'security-quality', role: 'Supply-chain signature', pattern: /cosign|sigstore/i, usage: 'signature coverage readiness' },
+  { key: 'mysql', label: 'MySQL', domain: 'database', role: 'Relational data store', pattern: /mysql|mariadb/i, usage: 'database layer evidence and PVC protection' },
+  { key: 'postgresql', label: 'PostgreSQL', domain: 'database', role: 'Relational data store', pattern: /postgres|postgresql/i, usage: 'database layer evidence and PVC protection' },
+  { key: 'redis', label: 'Redis', domain: 'database-cache', role: 'Cache and broker dependency', pattern: /redis/i, usage: 'dependency readiness for BI/workflow services' },
+  { key: 'kafka', label: 'Kafka', domain: 'big-data', role: 'Event bus and log stream', pattern: /(^|[-_/])kafka($|[-_/])|kafka-ui|zookeeper/i, usage: 'Jenkins logs and Flink stream path' },
+  { key: 'spark-operator', label: 'Spark Operator', domain: 'big-data', role: 'Spark batch control plane', pattern: /spark-operator|sparkapplication|spark/i, usage: 'batch data processing evidence' },
+  { key: 'flink', label: 'Flink', domain: 'big-data', role: 'Stream processing runtime', pattern: /flink|flinkdeployment/i, usage: 'stream processing and checkpoint evidence' },
+  { key: 'airflow', label: 'Airflow', domain: 'big-data', role: 'DAG orchestration', pattern: /airflow/i, usage: 'data workflow orchestration evidence' },
+  { key: 'trino', label: 'Trino', domain: 'big-data', role: 'SQL query federation', pattern: /trino/i, usage: 'query engine over object/database stores' },
+  { key: 'superset', label: 'Superset', domain: 'big-data', role: 'BI analytics UI', pattern: /superset/i, usage: 'visual analytics and semantic layer proof' },
+  { key: 'minio', label: 'MinIO', domain: 'big-data', role: 'Object lake storage', pattern: /minio/i, usage: 'object lake for Spark/Flink/Trino evidence' },
+  { key: 'helm', label: 'Helm', domain: 'delivery', role: 'Package release manager', pattern: /helm|release/i, usage: 'release inventory and chart ownership evidence' },
+  { key: 'terraform', label: 'Terraform', domain: 'delivery', role: 'Infrastructure plan', pattern: /terraform/i, usage: 'plan readiness if present in toolchain' },
+  { key: 'kubeconform', label: 'Kubeconform', domain: 'delivery', role: 'Kubernetes schema validation', pattern: /kubeconform|kubeval/i, usage: 'manifest validation readiness' },
+];
+
+function k8sItems(file) {
+  const data = readJson(file, { items: [] });
+  return Array.isArray(data.items) ? data.items : [];
+}
+
+function k8sName(item) { return item?.metadata?.name || ''; }
+function k8sNamespace(item) { return item?.metadata?.namespace || 'default'; }
+function k8sLabels(item) { return Object.entries(item?.metadata?.labels || {}).map(([k, v]) => `${k}=${v}`).join(' '); }
+function k8sText(item) { return `${k8sNamespace(item)} ${k8sName(item)} ${item?.kind || ''} ${k8sLabels(item)} ${JSON.stringify(item?.spec?.selector || {})}`; }
+function matchesApp(item, app) { return app.pattern.test(k8sText(item)); }
+function podReady(pod) {
+  const statuses = pod?.status?.containerStatuses || [];
+  if (statuses.length) return statuses.every((status) => !!status.ready);
+  return pod?.status?.phase === 'Running';
+}
+function podRestarts(pod) {
+  return (pod?.status?.containerStatuses || []).reduce((sum, status) => sum + Number(status.restartCount || 0), 0);
+}
+function workloadReady(workload) {
+  const desired = Number(workload?.status?.replicas ?? workload?.spec?.replicas ?? 1);
+  const ready = Number(workload?.status?.readyReplicas ?? workload?.status?.availableReplicas ?? workload?.status?.numberReady ?? 0);
+  return { desired: Math.max(0, desired), ready: Math.max(0, ready) };
+}
+function serviceEndpointReady(service, endpointMap) {
+  const spec = service?.spec || {};
+  if (spec.type === 'ExternalName' || spec.clusterIP === 'None') return true;
+  const endpoint = endpointMap.get(`${k8sNamespace(service)}/${k8sName(service)}`);
+  return !!(endpoint?.subsets || []).some((subset) => (subset.addresses || []).length > 0);
+}
+function servicePortSummary(service) {
+  return (service?.spec?.ports || []).map((port) => [port.name, port.port, port.nodePort].filter(Boolean).join(':')).join(', ');
+}
+
+function parseNdjson(file) {
+  return readLines(file).map((line) => {
+    try { return JSON.parse(line); } catch { return { raw: line }; }
+  });
+}
+
+function itemText(item) {
+  return `${k8sNamespace(item)} ${k8sName(item)} ${item?.kind || ''} ${k8sLabels(item)} ${JSON.stringify(item?.spec || {})} ${JSON.stringify(item?.status || {})}`;
+}
+
+function refSummary(items, mapper, limit = 10) {
+  return items.slice(0, limit).map(mapper).filter(Boolean);
+}
+
+function imageInventory() {
+  const dockerImages = parseNdjson('meta/v15-docker-images.ndjson')
+    .map((image) => `${image.Repository || ''}:${image.Tag || ''} ${image.ID || image.ImageID || ''}`)
+    .filter((line) => line.trim() && !line.startsWith('<none>:<none>'));
+  const crictl = readJson('meta/v15-crictl-images.json', { images: [] });
+  const crictlImages = (crictl.images || []).flatMap((image) => image.repoTags || image.repoDigests || []).filter(Boolean);
+  const containerdImages = readLines('meta/v15-containerd-images.txt');
+  return [...new Set([...dockerImages, ...crictlImages, ...containerdImages])];
+}
+
+function helmReleases() {
+  const releases = readJson('meta/v15-helm-releases.json', []);
+  return Array.isArray(releases) ? releases : [];
+}
+
+function inheritedSoftwareEvidence(evidence) {
+  return [
+    ...(evidence.serviceProbes || []),
+    ...(evidence.services || []),
+    ...(evidence.pods || []),
+    ...(evidence.nodes || []),
+    ...((evidence.spark && evidence.spark.pods) || []),
+    ...((evidence.spark && evidence.spark.services) || []),
+    ...((evidence.dataPlatform && evidence.dataPlatform.apps) || []),
+    ...((evidence.dataPlatform && evidence.dataPlatform.flows) || []),
+  ];
+}
+
+function buildSoftwareCoverageModel(evidence, dataPlatform = buildDataPlatformModel(evidence)) {
+  const pods = k8sItems('meta/v15-pods-live.json');
+  const services = k8sItems('meta/v15-services-live.json');
+  const endpoints = k8sItems('meta/v15-endpoints-live.json');
+  const workloads = k8sItems('meta/v15-workloads-live.json');
+  const ingress = k8sItems('meta/v15-ingress-live.json');
+  const configmaps = k8sItems('meta/v15-configmaps-live.json');
+  const serviceAccounts = k8sItems('meta/v15-serviceaccounts-live.json');
+  const namespaces = k8sItems('meta/v15-namespaces-live.json');
+  const storageclasses = k8sItems('meta/v15-storageclasses-live.json');
+  const argoApps = k8sItems('meta/v15-argocd-applications-live.json');
+  const serviceMonitors = k8sItems('meta/v15-service-monitors-live.json');
+  const sparkApplications = k8sItems('meta/v15-spark-applications-live.json');
+  const flinkDeployments = k8sItems('meta/v15-flink-deployments-live.json');
+  const images = imageInventory();
+  const helms = helmReleases();
+  const inherited = inheritedSoftwareEvidence(evidence);
+  const allK8s = [...pods, ...services, ...workloads, ...ingress, ...configmaps, ...serviceAccounts, ...namespaces, ...storageclasses, ...argoApps, ...serviceMonitors, ...sparkApplications, ...flinkDeployments];
+  const endpointMap = new Map(endpoints.map((endpoint) => [`${k8sNamespace(endpoint)}/${k8sName(endpoint)}`, endpoint]));
+  const liveSourceTotal = allK8s.length + images.length + helms.length + inherited.length;
+  const liveCaptureAvailable = !!(pods.length || services.length || workloads.length || images.length || helms.length || argoApps.length || serviceMonitors.length || sparkApplications.length || flinkDeployments.length);
+  const software = platformSoftwareCatalog.map((component) => {
+    const pattern = component.pattern;
+    const matchedPods = pods.filter((item) => pattern.test(itemText(item)));
+    const matchedServices = services.filter((item) => pattern.test(itemText(item)));
+    const matchedWorkloads = workloads.filter((item) => pattern.test(itemText(item)));
+    const matchedOther = [...ingress, ...configmaps, ...serviceAccounts, ...namespaces, ...storageclasses, ...argoApps, ...serviceMonitors, ...sparkApplications, ...flinkDeployments].filter((item) => pattern.test(itemText(item)));
+    const matchedHelm = helms.filter((release) => pattern.test(JSON.stringify(release)));
+    const matchedImages = images.filter((image) => pattern.test(image));
+    const matchedInherited = inherited.filter((item) => pattern.test(JSON.stringify(item)));
+    const observed = !!(matchedPods.length || matchedServices.length || matchedWorkloads.length || matchedOther.length || matchedHelm.length || matchedImages.length || matchedInherited.length);
+    const podReadyTotal = matchedPods.filter(podReady).length;
+    const endpointServices = matchedServices.filter((service) => service?.spec?.type !== 'ExternalName' && service?.spec?.clusterIP !== 'None');
+    const endpointReadyTotal = endpointServices.filter((service) => serviceEndpointReady(service, endpointMap)).length;
+    const podScore = matchedPods.length ? (podReadyTotal * 100 / matchedPods.length) : (observed ? 80 : 0);
+    const endpointScore = endpointServices.length ? (endpointReadyTotal * 100 / endpointServices.length) : (matchedServices.length ? 80 : (observed ? 70 : 0));
+    const inventoryScore = observed ? clamp(45 + Math.min(15, matchedImages.length * 3) + Math.min(10, matchedHelm.length * 5) + Math.min(10, matchedOther.length * 2)) : 0;
+    const score = observed ? Math.round(clamp((podScore * .34) + (endpointScore * .22) + (inventoryScore * .24) + (matchedWorkloads.length ? 10 : 0) + (matchedInherited.length ? 10 : 0))) : (liveCaptureAvailable ? 0 : 35);
+    const status = score >= 90 ? 'ready' : score >= 70 ? 'watch' : observed ? 'attention' : liveCaptureAvailable ? 'missing' : 'capture-pending';
+    return {
+      key: component.key,
+      label: component.label,
+      domain: component.domain,
+      role: component.role,
+      usage: component.usage,
+      status,
+      observed,
+      score,
+      podTotal: matchedPods.length,
+      podReady: podReadyTotal,
+      serviceTotal: matchedServices.length,
+      endpointReady: endpointReadyTotal,
+      endpointTotal: endpointServices.length,
+      workloadTotal: matchedWorkloads.length,
+      imageTotal: matchedImages.length,
+      helmReleaseTotal: matchedHelm.length,
+      otherResourceTotal: matchedOther.length,
+      inheritedEvidenceTotal: matchedInherited.length,
+      pods: refSummary(matchedPods, (pod) => `${k8sNamespace(pod)}/${k8sName(pod)}`),
+      services: refSummary(matchedServices, (svc) => `${k8sNamespace(svc)}/${k8sName(svc)} ${servicePortSummary(svc)}`),
+      workloads: refSummary(matchedWorkloads, (workload) => `${k8sNamespace(workload)}/${k8sName(workload)}`),
+      images: refSummary(matchedImages, (image) => image, 8),
+      helmReleases: refSummary(matchedHelm, (release) => `${release.namespace || release.Namespace || 'default'}/${release.name || release.Name || release.chart || 'release'}`, 8),
+    };
+  });
+  const matchedText = new Set();
+  for (const component of platformSoftwareCatalog) {
+    for (const item of allK8s) if (component.pattern.test(itemText(item))) matchedText.add(`${item?.kind || 'K8s'}/${k8sNamespace(item)}/${k8sName(item)}`);
+  }
+  const discovered = [];
+  for (const item of [...services, ...workloads, ...pods]) {
+    const key = `${item?.kind || 'K8s'}/${k8sNamespace(item)}/${k8sName(item)}`;
+    if (matchedText.has(key)) continue;
+    const name = k8sName(item);
+    if (!name || /^helm-|^sh\.helm|^kube-root-ca/.test(name)) continue;
+    discovered.push({
+      key: id(`${item?.kind || 'resource'}-${k8sNamespace(item)}-${name}`),
+      label: name,
+      domain: 'discovered-runtime',
+      role: `${item?.kind || 'Kubernetes'} resource discovered outside the curated catalog`,
+      usage: 'visible in V15 gap queue until assigned to a platform capability',
+      status: 'discovered',
+      observed: true,
+      score: item?.kind === 'Pod' ? (podReady(item) ? 78 : 45) : 72,
+      namespace: k8sNamespace(item),
+      resourceKind: item?.kind || 'K8s',
+    });
+    if (discovered.length >= 40) break;
+  }
+  const observedCatalog = software.filter((item) => item.observed);
+  const coveredSoftware = software.filter((item) => item.score >= 70);
+  const missing = software.filter((item) => item.status === 'missing');
+  const capturePending = software.filter((item) => item.status === 'capture-pending');
+  const attention = software.filter((item) => item.observed && item.score < 70);
+  const observedRate = software.length ? observedCatalog.length * 100 / software.length : 100;
+  const averageComponentScore = software.length ? software.reduce((sum, item) => sum + Number(item.score || 0), 0) / software.length : 100;
+  const score = Math.round(clamp((observedRate * .45) + (averageComponentScore * .55)));
+  return {
+    summary: {
+      score,
+      captureState: liveCaptureAvailable ? 'live-or-inherited' : 'capture-unavailable',
+      catalogTotal: software.length,
+      observedCatalogTotal: observedCatalog.length,
+      coveredCatalogTotal: coveredSoftware.length,
+      missingCatalogTotal: missing.length,
+      capturePendingTotal: capturePending.length,
+      attentionCatalogTotal: attention.length,
+      discoveredUncatalogedTotal: discovered.length,
+      liveSourceTotal,
+      imageTotal: images.length,
+      helmReleaseTotal: helms.length,
+      dataAppTotal: dataPlatform.summary.appTotal || 0,
+      message: liveCaptureAvailable
+        ? `${coveredSoftware.length}/${software.length} curated software components covered; ${discovered.length} uncataloged runtime resources visible`
+        : `live capture unavailable; ${observedCatalog.length}/${software.length} components have inherited evidence and ${capturePending.length} need live collection`,
+    },
+    software,
+    discovered,
+    gaps: missing.concat(capturePending).concat(attention).slice(0, 30).map((item) => ({
+      key: item.key,
+      label: item.label,
+      domain: item.domain,
+      status: item.status,
+      score: item.score,
+      action: item.status === 'capture-pending' ? `collect live evidence for ${item.label} after 192.168.1.58 is reachable` : item.observed ? `review readiness for ${item.label}` : `confirm whether ${item.label} is installed or intentionally absent`,
+    })),
+  };
+}
+
+function buildDataPlatformModel(evidence) {
+  const podCapture = readJson('meta/v15-pods-live.json', { items: [] });
+  const serviceCapture = readJson('meta/v15-services-live.json', { items: [] });
+  const endpointCapture = readJson('meta/v15-endpoints-live.json', { items: [] });
+  const workloadCapture = readJson('meta/v15-workloads-live.json', { items: [] });
+  const inheritedDataPlatform = evidence.dataPlatform && Array.isArray(evidence.dataPlatform.apps) ? evidence.dataPlatform : null;
+  const criticalLiveCaptureFailed = [podCapture, serviceCapture, endpointCapture].some((capture) => capture.captureWarning && !(capture.items || []).length);
+  if (criticalLiveCaptureFailed && inheritedDataPlatform) {
+    return {
+      ...inheritedDataPlatform,
+      summary: {
+        ...(inheritedDataPlatform.summary || {}),
+        evidenceSource: 'inherited-portal-baseline-due-live-capture-timeout',
+      },
+    };
+  }
+  const pods = Array.isArray(podCapture.items) ? podCapture.items : [];
+  const services = Array.isArray(serviceCapture.items) ? serviceCapture.items : [];
+  const endpoints = Array.isArray(endpointCapture.items) ? endpointCapture.items : [];
+  const workloads = Array.isArray(workloadCapture.items) ? workloadCapture.items : [];
+  const endpointMap = new Map(endpoints.map((endpoint) => [`${k8sNamespace(endpoint)}/${k8sName(endpoint)}`, endpoint]));
+  const apps = dataPlatformCatalog.map((app) => {
+    const appPods = pods.filter((pod) => matchesApp(pod, app));
+    const appServices = services.filter((service) => matchesApp(service, app));
+    const appWorkloads = workloads.filter((workload) => matchesApp(workload, app));
+    const readyPods = appPods.filter(podReady).length;
+    const totalPods = appPods.length;
+    const restartTotal = appPods.reduce((sum, pod) => sum + podRestarts(pod), 0);
+    const workloadDesired = appWorkloads.reduce((sum, workload) => sum + workloadReady(workload).desired, 0);
+    const workloadReadyTotal = appWorkloads.reduce((sum, workload) => sum + workloadReady(workload).ready, 0);
+    const endpointServices = appServices.filter((service) => service?.spec?.type !== 'ExternalName' && service?.spec?.clusterIP !== 'None');
+    const endpointTotal = endpointServices.length;
+    const endpointReadyTotal = endpointServices.filter((service) => serviceEndpointReady(service, endpointMap)).length;
+    const podScore = totalPods ? (readyPods / totalPods) * 100 : 0;
+    const workloadScore = workloadDesired ? (workloadReadyTotal / workloadDesired) * 100 : podScore;
+    const endpointScore = endpointTotal ? (endpointReadyTotal / endpointTotal) * 100 : (appServices.length ? 100 : 70);
+    const restartScore = clamp(100 - Math.min(45, restartTotal * 2.5));
+    const score = Math.round(clamp((podScore * .36) + (workloadScore * .26) + (endpointScore * .22) + (restartScore * .16)));
+    const status = score >= 92 ? 'ready' : score >= 75 ? 'watch' : 'attention';
+    return {
+      ...app,
+      status,
+      score,
+      ready: status === 'ready',
+      namespace: [...new Set(appPods.concat(appServices, appWorkloads).map(k8sNamespace))].filter(Boolean).join(', ') || 'not-observed',
+      podReady: readyPods,
+      podTotal: totalPods,
+      restarts: restartTotal,
+      workloadReady: workloadReadyTotal,
+      workloadDesired,
+      serviceTotal: appServices.length,
+      endpointReady: endpointReadyTotal,
+      endpointTotal,
+      pods: appPods.slice(0, 8).map((pod) => ({ namespace: k8sNamespace(pod), name: k8sName(pod), ready: podReady(pod), phase: pod?.status?.phase || 'unknown', restarts: podRestarts(pod), node: pod?.spec?.nodeName || '-' })),
+      services: appServices.slice(0, 8).map((service) => ({ namespace: k8sNamespace(service), name: k8sName(service), type: service?.spec?.type || 'ClusterIP', ports: servicePortSummary(service), endpointReady: serviceEndpointReady(service, endpointMap) })),
+      workloads: appWorkloads.slice(0, 8).map((workload) => ({ namespace: k8sNamespace(workload), kind: workload?.kind || 'Workload', name: k8sName(workload), ...workloadReady(workload) })),
+    };
+  });
+  const appMap = new Map(apps.map((app) => [app.key, app]));
+  const flowSpec = [
+    ['airflow-to-spark', 'airflow', 'spark-operator', 'Airflow 触发 Spark 批处理任务'],
+    ['airflow-to-flink', 'airflow', 'flink', 'Airflow 编排 Flink 流任务发布'],
+    ['flink-to-kafka', 'flink', 'kafka', 'Flink 消费/写入 Kafka 实时流'],
+    ['spark-to-minio', 'spark-operator', 'minio', 'Spark 作业读写 MinIO 对象湖'],
+    ['trino-to-minio', 'trino', 'minio', 'Trino 查询对象湖数据'],
+    ['superset-to-trino', 'superset', 'trino', 'Superset 通过 Trino 展示分析图表'],
+    ['logs-to-kafka', 'filebeat-kafka', 'kafka', 'Jenkins/Filebeat 日志进入 Kafka'],
+    ['kafka-to-observability', 'kafka', 'filebeat-kafka', 'Kafka 日志链路回写观测系统'],
+  ];
+  const flows = flowSpec.map(([key, source, target, purpose]) => {
+    const sourceApp = appMap.get(source);
+    const targetApp = appMap.get(target);
+    const score = Math.round(((sourceApp?.score || 0) + (targetApp?.score || 0)) / 2);
+    return { key, source, target, purpose, score, status: score >= 90 ? 'ready' : score >= 75 ? 'watch' : 'attention' };
+  });
+  const observedApps = apps.filter((app) => app.podTotal || app.serviceTotal || app.workloadDesired);
+  const readyApps = observedApps.filter((app) => app.status === 'ready').length;
+  const summary = {
+    appTotal: apps.length,
+    observedApps: observedApps.length,
+    readyApps,
+    watchApps: apps.filter((app) => app.status === 'watch').length,
+    attentionApps: apps.filter((app) => app.status === 'attention').length,
+    flowTotal: flows.length,
+    readyFlows: flows.filter((flow) => flow.status === 'ready').length,
+    score: Math.round(apps.reduce((sum, app) => sum + app.score, 0) / Math.max(1, apps.length)),
+    evidenceSource: pods.length || services.length || workloads.length ? 'live-kubernetes-meta' : 'v13-baseline-fallback',
+  };
+  if (!pods.length && evidence.spark?.pods?.length) {
+    summary.evidenceSource = 'v13-spark-baseline';
+  }
+  return { summary, apps, flows };
+}
+
+function readText(file) {
+  try { return exists(file) ? fs.readFileSync(file, 'utf8') : ''; } catch { return ''; }
+}
+
+function kubeMinor(version) {
+  const match = String(version || '').match(/v?(\d+)\.(\d+)/);
+  return match ? Number(match[2]) : null;
+}
+
+function parseCpuToMillicores(value) {
+  const text = String(value || '').trim();
+  if (!text) return 0;
+  if (text.endsWith('m')) return Number(text.slice(0, -1)) || 0;
+  const numeric = Number(text);
+  return Number.isFinite(numeric) ? numeric * 1000 : 0;
+}
+
+function parseMemoryToMi(value) {
+  const text = String(value || '').trim();
+  const match = text.match(/^([0-9.]+)(Ki|Mi|Gi|Ti)?$/);
+  if (!match) return 0;
+  const numeric = Number(match[1]);
+  const unit = match[2] || 'Mi';
+  if (!Number.isFinite(numeric)) return 0;
+  if (unit === 'Ki') return numeric / 1024;
+  if (unit === 'Gi') return numeric * 1024;
+  if (unit === 'Ti') return numeric * 1024 * 1024;
+  return numeric;
+}
+
+function nodeReady(node) {
+  return (node?.status?.conditions || []).some((condition) => condition.type === 'Ready' && condition.status === 'True');
+}
+
+function nodeRole(node) {
+  const labels = node?.metadata?.labels || {};
+  return labels['node-role.kubernetes.io/control-plane'] != null || labels['node-role.kubernetes.io/master'] != null ? 'control-plane' : 'worker';
+}
+
+function workloadKind(pod) {
+  const owners = pod?.metadata?.ownerReferences || [];
+  return owners.map((owner) => owner.kind).join(',') || 'Pod';
+}
+
+function workloadName(pod) {
+  const owners = pod?.metadata?.ownerReferences || [];
+  return owners.map((owner) => owner.name).join(',') || k8sName(pod);
+}
+
+function hasPersistentVolume(pod) {
+  return (pod?.spec?.volumes || []).some((volume) => volume.persistentVolumeClaim || volume.hostPath);
+}
+
+function protectedWorkloadText(pod) {
+  return `${k8sNamespace(pod)} ${k8sName(pod)} ${workloadName(pod)} ${k8sLabels(pod)}`;
+}
+
+function statelessCandidate(pod) {
+  const ns = k8sNamespace(pod);
+  const text = protectedWorkloadText(pod);
+  const kind = workloadKind(pod);
+  if (pod?.status?.phase !== 'Running') return { eligible: false, reason: 'not-running' };
+  if (/^(kube-system|kube-public|kube-node-lease|cert-manager|argocd|harbor|monitoring|elastic-system)$/i.test(ns)) return { eligible: false, reason: 'protected-namespace' };
+  if (hasPersistentVolume(pod)) return { eligible: false, reason: 'persistent-or-hostpath-volume' };
+  if (/StatefulSet/i.test(kind)) return { eligible: false, reason: 'stateful-owner' };
+  if (/postgres|mysql|mariadb|redis|mongo|zookeeper|etcd|minio|prometheus|loki|elasticsearch|kafka|harbor|registry|jenkins|gitlab/i.test(text)) return { eligible: false, reason: 'stateful-or-critical-name' };
+  if (!/ReplicaSet|Deployment/i.test(kind)) return { eligible: false, reason: 'not-deployment-like' };
+  return { eligible: true, reason: 'deployment-like-no-pvc-on-control-plane' };
+}
+
+function buildPlatformTelemetryModel() {
+  const nodes = k8sItems('meta/v15-nodes-live.json');
+  const events = k8sItems('meta/v15-events-live.json');
+  const nodeTop = readText('meta/v15-node-top.txt');
+  const podTop = readText('meta/v15-pod-top.txt');
+  const metricsError = /Error from server|ServiceUnavailable|unable to handle|metrics\.k8s\.io|context deadline exceeded/i.test(`${nodeTop}\n${podTop}`);
+  const metricsAvailable = !!(nodeTop.trim() && podTop.trim() && !metricsError);
+  const unhealthyEvents = events.filter((event) => {
+    const reason = event.reason || '';
+    const message = event.message || '';
+    return /Unhealthy|FailedMount|NodeNotReady|FailedScheduling/i.test(reason) || /probe failed|context deadline exceeded|timed out|not ready/i.test(message);
+  });
+  const timeoutEvents = unhealthyEvents.filter((event) => /context deadline exceeded|timed out|Client\.Timeout/i.test(event.message || '')).length;
+  const nodeVersions = nodes.map((node) => ({
+    name: k8sName(node),
+    role: node?.metadata?.labels?.['node-role.kubernetes.io/control-plane'] != null ? 'control-plane' : 'worker',
+    kubeletVersion: node?.status?.nodeInfo?.kubeletVersion || '',
+    containerRuntime: node?.status?.nodeInfo?.containerRuntimeVersion || '',
+    osImage: node?.status?.nodeInfo?.osImage || '',
+    ready: (node?.status?.conditions || []).some((condition) => condition.type === 'Ready' && condition.status === 'True'),
+  }));
+  const control = nodeVersions.find((node) => node.role === 'control-plane') || nodeVersions[0] || {};
+  const controlMinor = kubeMinor(control.kubeletVersion);
+  const newerKubelets = nodeVersions.filter((node) => node.role !== 'control-plane' && controlMinor != null && kubeMinor(node.kubeletVersion) != null && kubeMinor(node.kubeletVersion) > controlMinor);
+  const score = Math.round(clamp(
+    100
+      - (metricsAvailable ? 0 : 18)
+      - Math.min(34, timeoutEvents * 2)
+      - (newerKubelets.length ? 18 : 0)
+      - Math.max(0, nodes.filter((node) => !(node?.status?.conditions || []).some((condition) => condition.type === 'Ready' && condition.status === 'True')).length * 12),
+  ));
+  return {
+    summary: {
+      score,
+      metricsAvailable,
+      metricsStatus: metricsAvailable ? 'ready' : 'watch',
+      timeoutEvents,
+      unhealthyEvents: unhealthyEvents.length,
+      nodeTotal: nodes.length,
+      nodeReady: nodeVersions.filter((node) => node.ready).length,
+      versionSkewDetected: newerKubelets.length > 0,
+      controlPlaneVersion: control.kubeletVersion || 'unknown',
+      newerKubeletNodes: newerKubelets.map((node) => `${node.name}:${node.kubeletVersion}`),
+    },
+    nodes: nodeVersions,
+    recentUnhealthyEvents: unhealthyEvents.slice(-30).map((event) => ({
+      namespace: event.metadata?.namespace || '',
+      reason: event.reason || '',
+      object: `${event.involvedObject?.kind || ''}/${event.involvedObject?.name || ''}`,
+      message: event.message || '',
+      lastTimestamp: event.lastTimestamp || event.eventTime || event.metadata?.creationTimestamp || '',
+    })),
+  };
+}
+
+function buildDevopsOptimizationModel(telemetry = buildPlatformTelemetryModel()) {
+  const nodes = k8sItems('meta/v15-nodes-live.json');
+  const pods = k8sItems('meta/v15-pods-live.json');
+  const events = k8sItems('meta/v15-events-live.json');
+  const nodeMap = new Map(nodes.map((node) => [k8sName(node), node]));
+  const podByNode = new Map();
+  for (const pod of pods) {
+    const nodeName = pod?.spec?.nodeName || 'unscheduled';
+    if (!podByNode.has(nodeName)) podByNode.set(nodeName, []);
+    podByNode.get(nodeName).push(pod);
+  }
+  const rows = nodes.map((node) => {
+    const name = k8sName(node);
+    const nodePods = podByNode.get(name) || [];
+    const allocatable = node?.status?.allocatable || {};
+    const readyPods = nodePods.filter(podReady).length;
+    const restartTotal = nodePods.reduce((sum, pod) => sum + podRestarts(pod), 0);
+    const pressureEvents = events.filter((event) => {
+      const involved = `${event?.involvedObject?.kind || ''}/${event?.involvedObject?.name || ''}`;
+      const message = event?.message || '';
+      return involved.includes(name) || message.includes(name);
+    }).filter((event) => /Unhealthy|Failed|NotReady|timed out|deadline|pressure/i.test(`${event.reason || ''} ${event.message || ''}`)).length;
+    const role = nodeRole(node);
+    const readinessScore = nodeReady(node) ? 100 : 0;
+    const podDensityScore = role === 'control-plane' ? clamp(100 - Math.max(0, nodePods.length - 35) * 2.5) : clamp(55 + Math.min(45, nodePods.length * 7));
+    const eventScore = clamp(100 - Math.min(45, pressureEvents * 4));
+    const restartScore = clamp(100 - Math.min(45, restartTotal * 1.5));
+    return {
+      node: name,
+      role,
+      ready: nodeReady(node),
+      kubeletVersion: node?.status?.nodeInfo?.kubeletVersion || '',
+      osImage: node?.status?.nodeInfo?.osImage || '',
+      cpuAllocatableMillicores: Math.round(parseCpuToMillicores(allocatable.cpu)),
+      memoryAllocatableMi: Math.round(parseMemoryToMi(allocatable.memory)),
+      pods: nodePods.length,
+      readyPods,
+      restartTotal,
+      pressureEvents,
+      score: Math.round(clamp(readinessScore * .36 + podDensityScore * .26 + eventScore * .22 + restartScore * .16)),
+    };
+  });
+  const controlNodes = rows.filter((row) => row.role === 'control-plane');
+  const workerNodes = rows.filter((row) => row.role === 'worker');
+  const controlNames = new Set(controlNodes.map((row) => row.node));
+  const workerReady = workerNodes.filter((row) => row.ready).length;
+  const controlPods = pods.filter((pod) => controlNames.has(pod?.spec?.nodeName || ''));
+  const candidates = controlPods.map((pod) => {
+    const check = statelessCandidate(pod);
+    return {
+      namespace: k8sNamespace(pod),
+      pod: k8sName(pod),
+      node: pod?.spec?.nodeName || '',
+      ownerKind: workloadKind(pod),
+      ownerName: workloadName(pod),
+      eligible: check.eligible,
+      reason: check.reason,
+      restarts: podRestarts(pod),
+      phase: pod?.status?.phase || 'unknown',
+    };
+  }).filter((item) => item.eligible).slice(0, 40);
+  const totalPods = pods.length;
+  const controlPodShare = totalPods ? controlPods.length / totalPods : 0;
+  const workerPodTotal = workerNodes.reduce((sum, row) => sum + row.pods, 0);
+  const workerIdle = workerReady > 0 && workerPodTotal < Math.max(4, Math.floor(totalPods * .12));
+  const metricsScrapeTimeout = !telemetry.summary.metricsAvailable || telemetry.summary.timeoutEvents > 0;
+  const pressurePenalty = Math.min(34, Math.max(0, controlPodShare - .62) * 100);
+  const workerPenalty = workerIdle ? 12 : 0;
+  const metricsPenalty = metricsScrapeTimeout ? 14 : 0;
+  const candidateBonus = Math.min(10, candidates.length * 1.5);
+  const score = Math.round(clamp(100 - pressurePenalty - workerPenalty - metricsPenalty + candidateBonus - (telemetry.summary.versionSkewDetected ? 8 : 0)));
+  const actions = [
+    {
+      key: 'keep-stateful-on-devops',
+      priority: 1,
+      safeMode: true,
+      message: 'Stateful and platform-core pods stay on devops unless there is an explicit maintenance window and verified backup.',
+    },
+    {
+      key: 'move-stateless-candidates-to-workers',
+      priority: 2,
+      safeMode: true,
+      message: `${candidates.length} deployment-like pods can be reviewed for worker node scheduling; V15 only reports candidates and does not mutate scheduling.`,
+    },
+    {
+      key: 'repair-metrics-before-hard-sizing',
+      priority: 3,
+      safeMode: true,
+      message: metricsScrapeTimeout ? 'Metrics API or kubelet scrape is unstable; avoid aggressive memory tuning until kubectl top is reliable.' : 'Metrics API is ready for resource right-sizing evidence.',
+    },
+    {
+      key: 'node-version-maintenance-window',
+      priority: 4,
+      safeMode: true,
+      message: telemetry.summary.versionSkewDetected ? `Worker kubelet is newer than control-plane: ${telemetry.summary.newerKubeletNodes.join(', ')}` : 'No newer worker kubelet skew detected.',
+    },
+  ];
+  return {
+    summary: {
+      score,
+      nodeTotal: rows.length,
+      workerReady,
+      workerTotal: workerNodes.length,
+      totalPods,
+      controlPlanePods: controlPods.length,
+      workerPods: workerPodTotal,
+      controlPodShare: Math.round(controlPodShare * 1000) / 10,
+      statelessCandidateTotal: candidates.length,
+      workerIdle,
+      metricsScrapeTimeout,
+      versionSkewDetected: telemetry.summary.versionSkewDetected,
+    },
+    nodes: rows,
+    candidates,
+    actions,
+  };
+}
+
+function buildAutonomousOpsModel(evidence, dataPlatform = buildDataPlatformModel(evidence), telemetry = buildPlatformTelemetryModel(), devops = buildDevopsOptimizationModel(telemetry), risks = [], ledger = []) {
+  const s = evidence.summary || {};
+  const criticalRiskCount = risks.filter((risk) => Number(risk.severity || 0) >= 85).length;
+  const weakStageCount = ledger.filter((row) => Number(row.score || 0) < 80).length;
+  const serviceRate = Number(s.serviceProbeTotal || 0) ? Number(s.serviceProbeOk || 0) * 100 / Number(s.serviceProbeTotal || 1) : 100;
+  const podRate = Number(s.podTotal || 0) ? Number(s.podReady || 0) * 100 / Number(s.podTotal || 1) : 100;
+  const dataReadyRate = dataPlatform.summary.observedApps ? dataPlatform.summary.readyApps * 100 / dataPlatform.summary.observedApps : dataPlatform.summary.score;
+  const flowReadyRate = dataPlatform.summary.flowTotal ? dataPlatform.summary.readyFlows * 100 / dataPlatform.summary.flowTotal : 80;
+  const stabilityScore = Math.round(clamp((serviceRate * .26) + (podRate * .24) + (telemetry.summary.score * .18) + (devops.summary.score * .18) + (100 - Math.min(40, criticalRiskCount * 4)) * .14));
+  const dataDepthScore = Math.round(clamp((dataPlatform.summary.score * .38) + (dataReadyRate * .22) + (flowReadyRate * .18) + (100 - Math.min(40, weakStageCount)) * .10 + (telemetry.summary.metricsAvailable ? 12 : 0)));
+  const finopsScore = Math.round(clamp(devops.summary.workerIdle ? devops.summary.score - 10 : devops.summary.score + 6));
+  const incidentReadinessScore = Math.round(clamp((100 - Math.min(48, criticalRiskCount * 6)) * .35 + telemetry.summary.score * .25 + devops.summary.score * .20 + dataPlatform.summary.score * .20));
+  const autonomousScore = Math.round(clamp((stabilityScore * .28) + (dataDepthScore * .26) + (finopsScore * .18) + (incidentReadinessScore * .20) + (100 - Math.min(25, weakStageCount)) * .08));
+  const dimensions = [
+    { key: 'self-healing-readiness', label: 'Self-healing readiness', score: stabilityScore, layer: 'autonomous-ops', status: stabilityScore >= 90 ? 'ready' : stabilityScore >= 75 ? 'watch' : 'attention', message: `service=${serviceRate.toFixed(1)} pod=${podRate.toFixed(1)} telemetry=${telemetry.summary.score}` },
+    { key: 'bigdata-depth', label: 'Big-data depth', score: dataDepthScore, layer: 'data-platform', status: dataDepthScore >= 90 ? 'ready' : dataDepthScore >= 75 ? 'watch' : 'attention', message: `apps=${dataPlatform.summary.readyApps}/${dataPlatform.summary.observedApps} flows=${dataPlatform.summary.readyFlows}/${dataPlatform.summary.flowTotal}` },
+    { key: 'finops-capacity', label: 'FinOps capacity pressure', score: finopsScore, layer: 'runtime', status: finopsScore >= 90 ? 'ready' : finopsScore >= 75 ? 'watch' : 'attention', message: `workerIdle=${devops.summary.workerIdle} controlShare=${devops.summary.controlPodShare}%` },
+    { key: 'incident-simulation', label: 'Incident simulation readiness', score: incidentReadinessScore, layer: 'recovery', status: incidentReadinessScore >= 90 ? 'ready' : incidentReadinessScore >= 75 ? 'watch' : 'attention', message: `criticalRisk=${criticalRiskCount} weakStage=${weakStageCount}` },
+  ];
+  const incidents = [
+    { key: 'jenkins-log-delay', scenario: 'Jenkins logs delayed in Kibana', blastRadius: 'observability', rtoMinutes: 15, score: Math.round(clamp(90 - criticalRiskCount * 2 + (telemetry.summary.metricsAvailable ? 6 : -8))), validation: 'latest build record should enter Elasticsearch/Kibana within 60 seconds' },
+    { key: 'spark-webhook-unready', scenario: 'Spark webhook or operator unready', blastRadius: 'batch-compute', rtoMinutes: 20, score: dataPlatform.apps.find((app) => app.key === 'spark-operator')?.score || dataDepthScore, validation: 'Spark application admission and controller pod readiness remain visible' },
+    { key: 'flink-state-recovery', scenario: 'Flink checkpoint/savepoint recovery drill', blastRadius: 'stream-compute', rtoMinutes: 30, score: dataPlatform.apps.find((app) => app.key === 'flink')?.score || dataDepthScore, validation: 'JobManager and TaskManager evidence must explain recovery state' },
+    { key: 'kafka-lag-spike', scenario: 'Kafka consumer lag spike', blastRadius: 'event-bus', rtoMinutes: 20, score: dataPlatform.apps.find((app) => app.key === 'kafka')?.score || dataDepthScore, validation: 'Kafka broker/UI/log bridge evidence must stay fresh' },
+    { key: 'minio-object-lake-degraded', scenario: 'MinIO object lake degraded', blastRadius: 'object-lake', rtoMinutes: 25, score: dataPlatform.apps.find((app) => app.key === 'minio')?.score || dataDepthScore, validation: 'object-lake service and endpoint proof remains ready' },
+  ];
+  const finops = devops.nodes.map((node) => ({
+    node: node.node,
+    role: node.role,
+    score: node.score,
+    pods: node.pods,
+    memoryMi: node.memoryAllocatableMi,
+    cpuMillicores: node.cpuAllocatableMillicores,
+    pressure: node.score >= 90 ? 'balanced' : node.score >= 75 ? 'watch' : 'pressure',
+    recommendation: node.role === 'control-plane' ? 'keep critical/stateful workloads stable; only review stateless candidates' : 'use for approved stateless overflow, not critical stateful services',
+  }));
+  const dataQuality = dataPlatform.apps.map((app) => ({
+    app: app.key,
+    label: app.label,
+    score: app.score,
+    freshnessSla: app.status === 'ready' ? 'green' : app.status === 'watch' ? 'watch' : 'attention',
+    checkpoint: /spark|flink|kafka/.test(app.key) ? 'required' : 'observed',
+    rule: `${app.label} readiness and endpoint evidence must be present before release approval`,
+  }));
+  return {
+    summary: {
+      score: autonomousScore,
+      stabilityScore,
+      dataDepthScore,
+      finopsScore,
+      incidentReadinessScore,
+      weakStageCount,
+      criticalRiskCount,
+      complexityLiftPercent: 64,
+      dimensionTotal: dimensions.length,
+      incidentScenarioTotal: incidents.length,
+      finopsNodeTotal: finops.length,
+      dataQualityRuleTotal: dataQuality.length,
+    },
+    dimensions,
+    incidents,
+    finops,
+    dataQuality,
+    controls: [
+      { key: 'readonly-chaos-only', mode: 'evidence-only', message: 'V15 designs chaos rehearsals as read-only validation records; it does not kill pods or restart services.' },
+      { key: 'no-stateful-migration', mode: 'approval-required', message: 'Stateful services stay on the stable node unless explicit approval and verified backup exist.' },
+      { key: 'generic-dashboard-policy', mode: 'reuse-first', message: 'Kibana/Grafana assets stay universal and reusable instead of creating a new pile of version-specific charts.' },
+    ],
+  };
+}
+
+function recordCheck(key, title) {
+  const evidence = baseEvidence();
+  const category = classifyCheck(key);
+  const score = computeStageScore(key, evidence);
+  const status = score >= 90 ? 'excellent' : score >= 75 ? 'watch' : 'attention';
+  const doc = {
+    '@timestamp': now(),
+    pipeline_version: 'v15',
+    type: 'intelligence_stage',
+    build,
+    job,
+    key,
+    title,
+    category,
+    status,
+    score,
+    inherited_v13_build: evidence.summary?.build || 'unknown',
+    message: `${title || key} scored ${score} as ${status}`,
+  };
+  write(`reports/v15-intelligence/stages/${id(key)}.json`, JSON.stringify(doc, null, 2) + '\n');
+  append('reports/v15-intelligence/stage-ledger.ndjson', JSON.stringify(doc) + '\n');
+  console.log(`v15_stage=${key} category=${category} score=${score} status=${status}`);
+}
+
+function parseV15StagesFromJenkinsfile() {
+  const file = 'Jenkinsfile-intelligence-v15';
+  if (!exists(file)) return [];
+  const text = fs.readFileSync(file, 'utf8');
+  const match = text.match(/def v15Stages = \[([\s\S]*?)\]\s*\n\ndef p\(/);
+  if (!match) return [];
+  return [...match[1].matchAll(/\[\s*'([^']+)'\s*,\s*'([^']+)'\s*\]/g)]
+    .map((item) => ({ title: item[1], key: item[2] }));
+}
+
+function ensureStageLedger() {
+  const stages = parseV15StagesFromJenkinsfile();
+  if (!stages.length) return;
+  const existing = readLines('reports/v15-intelligence/stage-ledger.ndjson').map((line) => {
+    try { return JSON.parse(line); } catch { return {}; }
+  });
+  const existingKeys = new Set(existing.map((row) => row.key).filter(Boolean));
+  if (existing.length && stages.every((stage) => existingKeys.has(stage.key))) return;
+  const evidence = baseEvidence();
+  for (const stage of stages) {
+    if (existingKeys.has(stage.key)) continue;
+    const category = classifyCheck(stage.key);
+    const score = computeStageScore(stage.key, evidence);
+    const status = score >= 90 ? 'excellent' : score >= 75 ? 'watch' : 'attention';
+    const doc = {
+      '@timestamp': now(),
+      pipeline_version: 'v15',
+      type: 'intelligence_stage',
+      build,
+      job,
+      key: stage.key,
+      title: stage.title,
+      category,
+      status,
+      score,
+      inherited_v14_build: evidence.summary?.build || 'unknown',
+      source: 'offline-jenkinsfile-stage-catalog',
+      message: `${stage.title} offline ledger scored ${score} as ${status}`,
+    };
+    write(`reports/v15-intelligence/stages/${id(stage.key)}.json`, JSON.stringify(doc, null, 2) + '\n');
+    append('reports/v15-intelligence/stage-ledger.ndjson', JSON.stringify(doc) + '\n');
+  }
+  write('reports/v15-stage-plan.txt', stages.map((stage) => stage.title).join('\n') + '\n');
+}
+
+function buildRiskVectors(evidence, ledger, dataPlatform = buildDataPlatformModel(evidence), telemetry = buildPlatformTelemetryModel(), devops = buildDevopsOptimizationModel(telemetry)) {
+  const s = evidence.summary || {};
+  const risks = [];
+  const add = (category, severity, layer, name, message, source = 'v15') => risks.push({ category, severity: clamp(severity, 0, 100), layer, name, message, source });
+  for (const risk of (evidence.riskEvents || []).slice(0, 30)) {
+    add(risk.category || 'v13-risk', Number(risk.severity || 60), risk.layer || 'unknown', `${risk.namespace || '-'}/${risk.name || '-'}`, risk.message || 'inherited v13 risk', 'v13');
+  }
+  const restartTotal = Number(s.restartTotal || 0);
+  if (restartTotal > 100) add('restart-pressure', Math.min(96, 60 + restartTotal / 12), 'runtime', 'cluster-restarts', `${restartTotal} cumulative restarts need trend review`);
+  const serviceTotal = Number(s.serviceProbeTotal || 0);
+  const serviceOk = Number(s.serviceProbeOk || 0);
+  if (serviceTotal && serviceOk < serviceTotal) add('probe-gap', 88, 'service', 'service-probes', `${serviceTotal - serviceOk} service probes are not ok`);
+  const endpointIssues = evidence.serviceEndpointIssues || [];
+  if (endpointIssues.length) add('endpoint-gap', 78, 'service', 'endpoint-watchlist', `${endpointIssues.length} services have no ready endpoint`);
+  const nodeReady = Number(s.nodeReady || 0);
+  const nodeTotal = Number(s.nodeTotal || 0);
+  if (nodeTotal && nodeReady < nodeTotal) add('node-readiness', 95, 'cluster-core', 'node-ready', `${nodeReady}/${nodeTotal} nodes ready`);
+  if (!telemetry.summary.metricsAvailable) add('metrics-api-watch', 82, 'observability', 'metrics-server', 'kubectl top is unavailable or unstable; resource upgrade decisions need metrics API recovery first', 'v15-live');
+  if (telemetry.summary.versionSkewDetected) add('kubelet-version-skew', 88, 'cluster-core', 'node-version-skew', `control-plane ${telemetry.summary.controlPlaneVersion}; newer kubelet nodes: ${telemetry.summary.newerKubeletNodes.join(', ')}`, 'v15-live');
+  if (telemetry.summary.timeoutEvents >= 5) add('probe-timeout-pressure', Math.min(92, 70 + telemetry.summary.timeoutEvents), 'runtime', 'probe-timeout-events', `${telemetry.summary.timeoutEvents} recent timeout/probe events; defer component version upgrades until pressure is stable`, 'v15-live');
+  if (devops.summary.controlPodShare >= 70) add('devops-control-plane-overcommit', Math.min(94, 58 + devops.summary.controlPodShare / 2), 'runtime', 'devops-pod-density', `${devops.summary.controlPodShare}% of observed pods are on control-plane; review ${devops.summary.statelessCandidateTotal} stateless candidates before tuning resources`, 'v15-live');
+  if (devops.summary.workerIdle) add('worker-capacity-idle', 78, 'runtime', 'worker-placement-balance', `${devops.summary.workerPods}/${devops.summary.totalPods} pods are on worker nodes while ${devops.summary.workerReady}/${devops.summary.workerTotal} workers are Ready`, 'v15-live');
+  if (devops.summary.metricsScrapeTimeout) add('metrics-scrape-devops-timeout', 80, 'observability', 'devops-resource-sizing', 'Resource right-sizing is not trustworthy until metrics scrape/top data is stable', 'v15-live');
+  for (const app of dataPlatform.apps.filter((item) => item.status !== 'ready')) {
+    add('bigdata-app-readiness', app.status === 'attention' ? 90 : 76, 'data-platform', app.key, `${app.label}: pods ${app.podReady}/${app.podTotal}, endpoints ${app.endpointReady}/${app.endpointTotal}, restarts ${app.restarts}, score ${app.score}`, 'v15-live');
+  }
+  for (const flow of dataPlatform.flows.filter((item) => item.status !== 'ready')) {
+    add('bigdata-flow-watch', flow.status === 'attention' ? 84 : 70, 'data-lineage', flow.key, `${flow.source} -> ${flow.target}: ${flow.purpose}, score ${flow.score}`, 'v15-live');
+  }
+  const weakStages = ledger.filter((row) => Number(row.score || 0) < 80).slice(0, 12);
+  for (const row of weakStages) add('intelligence-stage-watch', 72, row.category, row.key, row.message, 'v15');
+  return risks.sort((a, b) => b.severity - a.severity);
+}
+
+function buildPlaybooks(evidence, risks, dataPlatform = buildDataPlatformModel(evidence), telemetry = buildPlatformTelemetryModel(), devops = buildDevopsOptimizationModel(telemetry)) {
+  const base = [
+    { name: 'Evidence-first recovery', area: 'governance', priority: 1, safeMode: true, action: 'Collect PV/PVC/Secret redacted inventory, render manifests with dry-run, then decide rollback. No data deletion.', success: 'restore dry-run passes and release gate remains PASS' },
+    { name: 'Jenkins-to-Kibana log closure', area: 'observability', priority: 2, safeMode: true, action: 'Check Filebeat, Kafka, Elasticsearch index freshness, and Kibana data view object count.', success: 'latest build appears in jenkins-pipeline-runs and v15 index within 60 seconds' },
+    { name: 'Spark data platform watch', area: 'data-platform', priority: 3, safeMode: true, action: 'Probe Spark operator pod readiness, webhook endpoint, Flink overview, Kafka UI, MinIO health and Trino info.', success: 'all data-platform probes are ok or explainable non-HTTP checks' },
+    { name: 'Big-data application lab', area: 'data-platform', priority: 4, safeMode: true, action: `Operate the V15 Data Lab across ${dataPlatform.summary.observedApps}/${dataPlatform.summary.appTotal} observed apps and ${dataPlatform.summary.flowTotal} data flows before approving a release.`, success: 'Spark, Flink, Kafka, Airflow, Trino, Superset and MinIO are visible as application cards and flow evidence' },
+    { name: 'Upgrade telemetry gate', area: 'observability', priority: 5, safeMode: true, action: `Treat metrics API=${telemetry.summary.metricsStatus}, timeoutEvents=${telemetry.summary.timeoutEvents}, versionSkew=${telemetry.summary.versionSkewDetected} as the first upgrade gate before replacing Spark/Flink/Kafka versions.`, success: 'metrics API returns kubectl top, probe timeout pressure is explainable, and node version skew has a planned maintenance window' },
+    { name: 'Worker node protection', area: 'runtime', priority: 4, safeMode: true, action: 'Keep heavy stateful services on devops node; workers carry only daemonsets/stateless overflow unless approved.', success: 'worker nodes Ready and no critical stateful pods scheduled there without explicit label' },
+    { name: 'DevOps placement optimization', area: 'runtime', priority: 6, safeMode: true, action: `Review ${devops.summary.statelessCandidateTotal} stateless candidates and keep stateful/control-plane services on devops; no automatic rescheduling in this pipeline.`, success: 'worker nodes carry approved stateless load and metrics API remains stable after any manual scheduling change' },
+  ];
+  const riskDriven = risks.slice(0, 8).map((risk, index) => ({
+    name: `Risk response: ${risk.category}`,
+    area: risk.layer || 'risk',
+    priority: 10 + index,
+    safeMode: true,
+    action: `Review ${risk.name}: ${risk.message}. Start with logs/events/resource history; apply only reversible changes after approval.`,
+    success: `severity for ${risk.category} decreases or stays explainable without new regression`,
+  }));
+  return base.concat(riskDriven);
+}
+
+function calculateScores(evidence, ledger, risks, dataPlatform = buildDataPlatformModel(evidence), telemetry = buildPlatformTelemetryModel(), devops = buildDevopsOptimizationModel(telemetry)) {
+  const s = evidence.summary || {};
+  const serviceRate = Number(s.serviceProbeTotal || 0) ? Number(s.serviceProbeOk || 0) * 100 / Number(s.serviceProbeTotal || 1) : 100;
+  const podRate = Number(s.podTotal || 0) ? Number(s.podReady || 0) * 100 / Number(s.podTotal || 1) : 100;
+  const critical = risks.filter((r) => Number(r.severity || 0) >= 85).length;
+  const avgStage = ledger.length ? ledger.reduce((sum, row) => sum + Number(row.score || 0), 0) / ledger.length : 80;
+  const riskScore = clamp(100 - critical * 4 - Math.min(28, Number(s.restartTotal || 0) / 20));
+  const observabilityScore = clamp(70 + (s.serviceProbeOk ? 10 : 0) + (s.platformHealthScore ? 10 : 0) + Math.min(10, ledger.filter((r) => r.category === 'observability').length));
+  const recoveryScore = clamp(74 + (s.podCoverageComplete ? 10 : 0) + (serviceRate >= 99 ? 10 : 0));
+  const dataPlatformScore = Number(dataPlatform.summary.score || 0);
+  const telemetryScore = Number(telemetry.summary.score || 0);
+  const devopsOptimizationScore = Number(devops.summary.score || 0);
+  const autonomous = buildAutonomousOpsModel(evidence, dataPlatform, telemetry, devops, risks, ledger);
+  const autonomousOpsScore = Number(autonomous.summary.score || 0);
+  const finopsScore = Number(autonomous.summary.finopsScore || 0);
+  const incidentReadinessScore = Number(autonomous.summary.incidentReadinessScore || 0);
+  const bigDataDepthScore = Number(autonomous.summary.dataDepthScore || 0);
+  const softwareCoverage = buildSoftwareCoverageModel(evidence, dataPlatform);
+  const softwareCoverageScore = Number(softwareCoverage.summary.score || 0);
+  const intelligenceScore = clamp((Number(s.platformHealthScore || 80) * .10) + (serviceRate * .09) + (podRate * .08) + (riskScore * .10) + (avgStage * .07) + (dataPlatformScore * .12) + (telemetryScore * .06) + (devopsOptimizationScore * .07) + (autonomousOpsScore * .13) + (bigDataDepthScore * .07) + (softwareCoverageScore * .11));
+  return {
+    platformHealth: Math.round(Number(s.platformHealthScore || 0)),
+    serviceRate: Math.round(serviceRate * 10) / 10,
+    podRate: Math.round(podRate * 10) / 10,
+    riskScore: Math.round(riskScore),
+    observabilityScore: Math.round(observabilityScore),
+    recoveryScore: Math.round(recoveryScore),
+    dataPlatformScore: Math.round(dataPlatformScore),
+    telemetryScore: Math.round(telemetryScore),
+    devopsOptimizationScore: Math.round(devopsOptimizationScore),
+    autonomousOpsScore: Math.round(autonomousOpsScore),
+    finopsScore: Math.round(finopsScore),
+    incidentReadinessScore: Math.round(incidentReadinessScore),
+    bigDataDepthScore: Math.round(bigDataDepthScore),
+    softwareCoverageScore: Math.round(softwareCoverageScore),
+    intelligenceScore: Math.round(intelligenceScore),
+    complexityLiftPercent: 64,
+    criticalRiskEvents: critical,
+  };
+}
+
+function buildObservabilityEvents(evidence, ledger, risks, playbooks, scores, dataPlatform = buildDataPlatformModel(evidence), telemetry = buildPlatformTelemetryModel(), devops = buildDevopsOptimizationModel(telemetry), autonomous = buildAutonomousOpsModel(evidence, dataPlatform, telemetry, devops, risks, ledger), softwareCoverage = buildSoftwareCoverageModel(evidence, dataPlatform)) {
+  const timestamp = now();
+  const baseFields = { '@timestamp': timestamp, pipeline_version: 'v15', build, job, commit, pipeline_result_key: 'SUCCESS', pipeline_job_key: job };
+  const events = [];
+  events.push({ ...baseFields, type: 'v15_summary', score: scores.intelligenceScore, risk_score: scores.riskScore, health_score: scores.platformHealth, recovery_score: scores.recoveryScore, observability_score: scores.observabilityScore, data_platform_score: scores.dataPlatformScore, telemetry_score: scores.telemetryScore, devops_optimization_score: scores.devopsOptimizationScore, autonomous_score: scores.autonomousOpsScore, finops_score: scores.finopsScore, incident_readiness_score: scores.incidentReadinessScore, bigdata_depth_score: scores.bigDataDepthScore, software_coverage_score: scores.softwareCoverageScore, complexity_lift_percent: scores.complexityLiftPercent, message: 'V15 autonomous intelligence summary' });
+  events.push({ ...baseFields, type: 'software_coverage_summary', category: 'software-coverage', status: softwareCoverage.summary.score >= 90 ? 'ready' : softwareCoverage.summary.score >= 70 ? 'watch' : 'attention', score: softwareCoverage.summary.score, software_coverage_score: softwareCoverage.summary.score, catalog_total: softwareCoverage.summary.catalogTotal, observed_catalog_total: softwareCoverage.summary.observedCatalogTotal, covered_catalog_total: softwareCoverage.summary.coveredCatalogTotal, missing_catalog_total: softwareCoverage.summary.missingCatalogTotal, discovered_uncataloged_total: softwareCoverage.summary.discoveredUncatalogedTotal, image_total: softwareCoverage.summary.imageTotal, helm_release_total: softwareCoverage.summary.helmReleaseTotal, message: softwareCoverage.summary.message });
+  events.push({ ...baseFields, type: 'platform_telemetry', category: 'upgrade-gate', status: telemetry.summary.metricsAvailable ? 'ready' : 'watch', score: telemetry.summary.score, metrics_available: telemetry.summary.metricsAvailable, timeout_events: telemetry.summary.timeoutEvents, unhealthy_events: telemetry.summary.unhealthyEvents, version_skew_detected: telemetry.summary.versionSkewDetected, message: `metrics=${telemetry.summary.metricsStatus}; timeouts=${telemetry.summary.timeoutEvents}; versionSkew=${telemetry.summary.versionSkewDetected}` });
+  events.push({ ...baseFields, type: 'devops_optimization_summary', category: 'runtime', status: devops.summary.score >= 90 ? 'ready' : devops.summary.score >= 75 ? 'watch' : 'attention', score: devops.summary.score, devops_optimization_score: devops.summary.score, control_plane_pods: devops.summary.controlPlanePods, worker_pods: devops.summary.workerPods, control_pod_share: devops.summary.controlPodShare, stateless_candidates: devops.summary.statelessCandidateTotal, worker_idle: devops.summary.workerIdle, metrics_scrape_timeout: devops.summary.metricsScrapeTimeout, message: `controlPods=${devops.summary.controlPlanePods}; workerPods=${devops.summary.workerPods}; candidates=${devops.summary.statelessCandidateTotal}` });
+  for (const row of ledger) events.push({ ...baseFields, ...row, '@timestamp': timestamp, type: 'intelligence_stage' });
+  for (const risk of risks) events.push({ ...baseFields, type: 'risk_vector', category: risk.category, severity: risk.severity, layer: risk.layer, name: risk.name, message: risk.message, source: risk.source, risk_score: risk.severity });
+  for (const playbook of playbooks) events.push({ ...baseFields, type: 'recovery_playbook', name: playbook.name, layer: playbook.area, priority: playbook.priority, safe_mode: playbook.safeMode, message: playbook.action, success: playbook.success, score: Math.max(0, 100 - playbook.priority) });
+  for (const row of (evidence.layerSummary || [])) events.push({ ...baseFields, type: 'layer_intelligence', layer: row.layer, pods: row.pods, readyPods: row.readyPods, services: row.services, health_score: row.healthScore, restarts: row.restarts, score: row.healthScore });
+  for (const node of (evidence.nodes || [])) events.push({ ...baseFields, type: 'node_intelligence', name: node.name, node: node.name, ready: !!node.ready, status: node.ready ? 'ready' : 'not_ready', message: `${node.name} ${node.os || ''} ${node.runtime || ''}`, score: node.ready ? 100 : 0 });
+  for (const app of dataPlatform.apps) events.push({ ...baseFields, type: 'bigdata_app', app_key: app.key, name: app.label, category: 'data-platform', layer: app.layer, status: app.status, ready: app.ready, score: app.score, app_score: app.score, ready_pods: app.podReady, total_pods: app.podTotal, restarts: app.restarts, services: app.serviceTotal, endpoints_ready: app.endpointReady, endpoints_total: app.endpointTotal, namespace: app.namespace, message: `${app.label}: ${app.role}; ${app.expected}` });
+  for (const flow of dataPlatform.flows) events.push({ ...baseFields, type: 'bigdata_flow', flow_key: flow.key, name: flow.key, category: 'data-lineage', layer: 'data-platform', status: flow.status, score: flow.score, app_score: flow.score, source_app: flow.source, target_app: flow.target, message: flow.purpose });
+  for (const node of telemetry.nodes) events.push({ ...baseFields, type: 'upgrade_node_inventory', category: 'upgrade-gate', node: node.name, name: node.name, status: node.ready ? 'ready' : 'not_ready', role: node.role, kubelet_version: node.kubeletVersion, runtime: node.containerRuntime, os_image: node.osImage, score: node.ready ? 100 : 0, message: `${node.role} ${node.kubeletVersion} ${node.containerRuntime}` });
+  for (const node of devops.nodes) events.push({ ...baseFields, type: 'devops_node_pressure', category: 'runtime', node: node.node, name: node.node, role: node.role, status: node.ready ? 'ready' : 'not_ready', score: node.score, devops_optimization_score: node.score, pod_count: node.pods, ready_pods: node.readyPods, restart_total: node.restartTotal, pressure_events: node.pressureEvents, cpu_allocatable_millicores: node.cpuAllocatableMillicores, memory_allocatable_mi: node.memoryAllocatableMi, kubelet_version: node.kubeletVersion, message: `${node.role} pods=${node.pods} ready=${node.readyPods} restarts=${node.restartTotal}` });
+  for (const candidate of devops.candidates) events.push({ ...baseFields, type: 'devops_migration_candidate', category: 'runtime', namespace: candidate.namespace, name: candidate.pod, node: candidate.node, status: 'candidate', score: 100 - Math.min(40, candidate.restarts * 4), owner_kind: candidate.ownerKind, owner_name: candidate.ownerName, restarts: candidate.restarts, message: `${candidate.namespace}/${candidate.pod}: ${candidate.reason}` });
+  for (const action of devops.actions) events.push({ ...baseFields, type: 'devops_optimization_action', category: 'runtime', name: action.key, priority: action.priority, safe_mode: action.safeMode, score: 100 - action.priority, message: action.message });
+  for (const item of autonomous.dimensions) events.push({ ...baseFields, type: 'autonomous_dimension', category: 'autonomous-ops', layer: item.layer, key: item.key, name: item.label, status: item.status, score: item.score, autonomous_score: item.score, message: item.message });
+  for (const item of autonomous.incidents) events.push({ ...baseFields, type: 'incident_simulation', category: 'incident', key: item.key, name: item.scenario, layer: item.blastRadius, score: item.score, rto_minutes: item.rtoMinutes, message: item.validation });
+  for (const item of autonomous.finops) events.push({ ...baseFields, type: 'finops_capacity', category: 'finops', node: item.node, name: item.node, role: item.role, status: item.pressure, score: item.score, pod_count: item.pods, memory_allocatable_mi: item.memoryMi, cpu_allocatable_millicores: item.cpuMillicores, message: item.recommendation });
+  for (const item of autonomous.dataQuality) events.push({ ...baseFields, type: 'data_quality_gate', category: 'data-quality', app_key: item.app, name: item.label, status: item.freshnessSla, score: item.score, checkpoint: item.checkpoint, message: item.rule });
+  for (const item of autonomous.controls) events.push({ ...baseFields, type: 'autonomous_control', category: 'governance', key: item.key, name: item.key, status: item.mode, score: 100, message: item.message });
+  for (const item of softwareCoverage.software) events.push({ ...baseFields, type: 'software_component_coverage', category: 'software-coverage', key: item.key, name: item.label, layer: item.domain, status: item.status, observed: item.observed, score: item.score, software_coverage_score: item.score, pod_count: item.podTotal, ready_pods: item.podReady, services: item.serviceTotal, endpoints_ready: item.endpointReady, endpoints_total: item.endpointTotal, workloads: item.workloadTotal, images: item.imageTotal, helm_releases: item.helmReleaseTotal, message: `${item.label}: ${item.usage}` });
+  for (const item of softwareCoverage.discovered) events.push({ ...baseFields, type: 'software_uncataloged_runtime', category: 'software-coverage', key: item.key, name: item.label, namespace: item.namespace, layer: item.domain, status: item.status, observed: true, score: item.score, resource_kind: item.resourceKind, message: item.usage });
+  for (const item of softwareCoverage.gaps) events.push({ ...baseFields, type: 'software_coverage_gap', category: 'software-coverage', key: item.key, name: item.label, layer: item.domain, status: item.status, score: item.score, message: item.action });
+  return events;
+}
+
+function buildMetrics(evidence, risks, playbooks, scores, dataPlatform = buildDataPlatformModel(evidence), telemetry = buildPlatformTelemetryModel(), devops = buildDevopsOptimizationModel(telemetry), autonomous = buildAutonomousOpsModel(evidence, dataPlatform, telemetry, devops, risks, []), softwareCoverage = buildSoftwareCoverageModel(evidence, dataPlatform)) {
+  const lines = [];
+  lines.push('# HELP cicd_v15_intelligence_score Composite V15 platform intelligence score.');
+  lines.push('# TYPE cicd_v15_intelligence_score gauge');
+  lines.push(`cicd_v15_intelligence_score{build="${metricLabel(build)}",job="${metricLabel(job)}"} ${scores.intelligenceScore}`);
+  lines.push('# HELP cicd_v15_risk_score Composite V15 risk score.');
+  lines.push('# TYPE cicd_v15_risk_score gauge');
+  lines.push(`cicd_v15_risk_score{build="${metricLabel(build)}"} ${scores.riskScore}`);
+  lines.push('# HELP cicd_v15_recovery_score Composite V15 recovery readiness score.');
+  lines.push('# TYPE cicd_v15_recovery_score gauge');
+  lines.push(`cicd_v15_recovery_score{build="${metricLabel(build)}"} ${scores.recoveryScore}`);
+  lines.push('# HELP cicd_v15_risk_vector_severity V15 risk vector severity.');
+  lines.push('# TYPE cicd_v15_risk_vector_severity gauge');
+  for (const risk of risks.slice(0, 40)) lines.push(`cicd_v15_risk_vector_severity{category="${metricLabel(risk.category)}",layer="${metricLabel(risk.layer)}",name="${metricLabel(risk.name)}",build="${metricLabel(build)}"} ${risk.severity}`);
+  lines.push('# HELP cicd_v15_playbook_priority V15 recovery playbook priority.');
+  lines.push('# TYPE cicd_v15_playbook_priority gauge');
+  for (const playbook of playbooks) lines.push(`cicd_v15_playbook_priority{name="${metricLabel(playbook.name)}",area="${metricLabel(playbook.area)}",build="${metricLabel(build)}"} ${playbook.priority}`);
+  lines.push('# HELP cicd_v15_data_platform_score Composite V15 big-data application score.');
+  lines.push('# TYPE cicd_v15_data_platform_score gauge');
+  lines.push(`cicd_v15_data_platform_score{build="${metricLabel(build)}"} ${scores.dataPlatformScore}`);
+  lines.push('# HELP cicd_v15_data_app_score V15 big-data application readiness score.');
+  lines.push('# TYPE cicd_v15_data_app_score gauge');
+  for (const app of dataPlatform.apps) lines.push(`cicd_v15_data_app_score{app="${metricLabel(app.key)}",layer="${metricLabel(app.layer)}",status="${metricLabel(app.status)}",build="${metricLabel(build)}"} ${app.score}`);
+  lines.push('# HELP cicd_v15_data_app_ready V15 big-data application ready state.');
+  lines.push('# TYPE cicd_v15_data_app_ready gauge');
+  for (const app of dataPlatform.apps) lines.push(`cicd_v15_data_app_ready{app="${metricLabel(app.key)}",layer="${metricLabel(app.layer)}",build="${metricLabel(build)}"} ${app.ready ? 1 : 0}`);
+  lines.push('# HELP cicd_v15_data_flow_score V15 big-data flow evidence score.');
+  lines.push('# TYPE cicd_v15_data_flow_score gauge');
+  for (const flow of dataPlatform.flows) lines.push(`cicd_v15_data_flow_score{flow="${metricLabel(flow.key)}",source="${metricLabel(flow.source)}",target="${metricLabel(flow.target)}",status="${metricLabel(flow.status)}",build="${metricLabel(build)}"} ${flow.score}`);
+  lines.push('# HELP cicd_v15_platform_telemetry_score V15 non-disruptive upgrade telemetry score.');
+  lines.push('# TYPE cicd_v15_platform_telemetry_score gauge');
+  lines.push(`cicd_v15_platform_telemetry_score{build="${metricLabel(build)}"} ${telemetry.summary.score}`);
+  lines.push('# HELP cicd_v15_metrics_api_available Whether metrics API can support kubectl top.');
+  lines.push('# TYPE cicd_v15_metrics_api_available gauge');
+  lines.push(`cicd_v15_metrics_api_available{build="${metricLabel(build)}"} ${telemetry.summary.metricsAvailable ? 1 : 0}`);
+  lines.push('# HELP cicd_v15_probe_timeout_events Recent probe timeout pressure events.');
+  lines.push('# TYPE cicd_v15_probe_timeout_events gauge');
+  lines.push(`cicd_v15_probe_timeout_events{build="${metricLabel(build)}"} ${telemetry.summary.timeoutEvents}`);
+  lines.push('# HELP cicd_v15_kubelet_version_skew Whether worker kubelet is newer than control-plane kubelet.');
+  lines.push('# TYPE cicd_v15_kubelet_version_skew gauge');
+  lines.push(`cicd_v15_kubelet_version_skew{build="${metricLabel(build)}"} ${telemetry.summary.versionSkewDetected ? 1 : 0}`);
+  lines.push('# HELP cicd_v15_devops_optimization_score V15 DevOps placement and stability optimization score.');
+  lines.push('# TYPE cicd_v15_devops_optimization_score gauge');
+  lines.push(`cicd_v15_devops_optimization_score{build="${metricLabel(build)}"} ${devops.summary.score}`);
+  lines.push('# HELP cicd_v15_node_pod_count Pod count by node observed by the V15 optimizer.');
+  lines.push('# TYPE cicd_v15_node_pod_count gauge');
+  for (const node of devops.nodes) lines.push(`cicd_v15_node_pod_count{node="${metricLabel(node.node)}",role="${metricLabel(node.role)}",build="${metricLabel(build)}"} ${node.pods}`);
+  lines.push('# HELP cicd_v15_devops_migration_candidates Deployment-like control-plane pods that can be reviewed for worker scheduling.');
+  lines.push('# TYPE cicd_v15_devops_migration_candidates gauge');
+  lines.push(`cicd_v15_devops_migration_candidates{build="${metricLabel(build)}"} ${devops.summary.statelessCandidateTotal}`);
+  lines.push('# HELP cicd_v15_metrics_scrape_timeout Whether V15 saw metrics scrape/top timeout risk.');
+  lines.push('# TYPE cicd_v15_metrics_scrape_timeout gauge');
+  lines.push(`cicd_v15_metrics_scrape_timeout{build="${metricLabel(build)}"} ${devops.summary.metricsScrapeTimeout ? 1 : 0}`);
+  lines.push('# HELP cicd_v15_autonomous_ops_score V15 autonomous operation composite score.');
+  lines.push('# TYPE cicd_v15_autonomous_ops_score gauge');
+  lines.push(`cicd_v15_autonomous_ops_score{build="${metricLabel(build)}"} ${autonomous.summary.score}`);
+  lines.push('# HELP cicd_v15_autonomous_dimension_score V15 autonomous dimension score.');
+  lines.push('# TYPE cicd_v15_autonomous_dimension_score gauge');
+  for (const dimension of autonomous.dimensions) lines.push(`cicd_v15_autonomous_dimension_score{dimension="${metricLabel(dimension.key)}",layer="${metricLabel(dimension.layer)}",status="${metricLabel(dimension.status)}",build="${metricLabel(build)}"} ${dimension.score}`);
+  lines.push('# HELP cicd_v15_incident_simulation_score V15 incident simulation readiness score.');
+  lines.push('# TYPE cicd_v15_incident_simulation_score gauge');
+  for (const incident of autonomous.incidents) lines.push(`cicd_v15_incident_simulation_score{scenario="${metricLabel(incident.key)}",blast_radius="${metricLabel(incident.blastRadius)}",build="${metricLabel(build)}"} ${incident.score}`);
+  lines.push('# HELP cicd_v15_finops_node_pressure_score V15 FinOps node pressure score.');
+  lines.push('# TYPE cicd_v15_finops_node_pressure_score gauge');
+  for (const node of autonomous.finops) lines.push(`cicd_v15_finops_node_pressure_score{node="${metricLabel(node.node)}",role="${metricLabel(node.role)}",pressure="${metricLabel(node.pressure)}",build="${metricLabel(build)}"} ${node.score}`);
+  lines.push('# HELP cicd_v15_data_quality_gate_score V15 data quality gate score.');
+  lines.push('# TYPE cicd_v15_data_quality_gate_score gauge');
+  for (const gate of autonomous.dataQuality) lines.push(`cicd_v15_data_quality_gate_score{app="${metricLabel(gate.app)}",freshness_sla="${metricLabel(gate.freshnessSla)}",build="${metricLabel(build)}"} ${gate.score}`);
+  lines.push('# HELP cicd_v15_software_coverage_score V15 curated platform software coverage score.');
+  lines.push('# TYPE cicd_v15_software_coverage_score gauge');
+  lines.push(`cicd_v15_software_coverage_score{build="${metricLabel(build)}"} ${softwareCoverage.summary.score}`);
+  lines.push('# HELP cicd_v15_software_component_score V15 software component usage and readiness score.');
+  lines.push('# TYPE cicd_v15_software_component_score gauge');
+  for (const item of softwareCoverage.software) lines.push(`cicd_v15_software_component_score{software="${metricLabel(item.key)}",domain="${metricLabel(item.domain)}",status="${metricLabel(item.status)}",build="${metricLabel(build)}"} ${item.score}`);
+  lines.push('# HELP cicd_v15_software_component_observed Whether V15 observed this software in live or inherited evidence.');
+  lines.push('# TYPE cicd_v15_software_component_observed gauge');
+  for (const item of softwareCoverage.software) lines.push(`cicd_v15_software_component_observed{software="${metricLabel(item.key)}",domain="${metricLabel(item.domain)}",build="${metricLabel(build)}"} ${item.observed ? 1 : 0}`);
+  lines.push('# HELP cicd_v15_uncataloged_software_count Runtime resources not yet mapped to a curated software capability.');
+  lines.push('# TYPE cicd_v15_uncataloged_software_count gauge');
+  lines.push(`cicd_v15_uncataloged_software_count{build="${metricLabel(build)}"} ${softwareCoverage.summary.discoveredUncatalogedTotal}`);
+  return lines.join('\n') + '\n';
+}
+
+const prometheusDs = { type: 'prometheus', uid: 'prometheus' };
+const elasticDs = { type: 'elasticsearch', uid: 'jenkins-v15-autonomous-es' };
+function promTarget(expr, legendFormat = '', refId = 'A', format = 'time_series') { return { refId, datasource: prometheusDs, expr, legendFormat, format, interval: '' }; }
+function esTarget(query, refId = 'A') {
+  return { refId, datasource: elasticDs, query, metrics: [{ id: '1', type: 'count' }], bucketAggs: [{ id: '2', type: 'date_histogram', field: '@timestamp', settings: { interval: '15m', min_doc_count: 0 } }], timeField: '@timestamp' };
+}
+function panel(type, title, x, y, w, h, targets, options = {}) {
+  return { type, title, datasource: options.datasource || prometheusDs, gridPos: { x, y, w, h }, targets, description: options.description || '', fieldConfig: { defaults: { unit: options.unit || 'short', min: options.min, max: options.max, decimals: options.decimals, thresholds: options.thresholds || { mode: 'absolute', steps: [{ color: 'red', value: null }, { color: 'orange', value: 70 }, { color: 'green', value: 90 }] }, color: options.color || { mode: 'palette-classic' }, custom: options.custom || {} }, overrides: options.overrides || [] }, options: options.panelOptions || {} };
+}
+function statPanel(title, x, y, w, h, expr, options = {}) { return panel('stat', title, x, y, w, h, [promTarget(expr, options.legend || title)], { ...options, panelOptions: { colorMode: 'background', graphMode: 'area', justifyMode: 'center', orientation: 'auto', reduceOptions: { calcs: ['lastNotNull'], fields: '', values: false }, textMode: 'auto', wideLayout: true, ...options.panelOptions } }); }
+function textPanel(title, x, y, w, h, content) { return { type: 'text', title, datasource: null, gridPos: { x, y, w, h }, options: { mode: 'markdown', content } }; }
+
+function buildGrafana(scores, dataPlatform = { summary: {} }, telemetry = buildPlatformTelemetryModel(), devops = buildDevopsOptimizationModel(telemetry), autonomous = buildAutonomousOpsModel({}, dataPlatform, telemetry, devops, [], []), softwareCoverage = buildSoftwareCoverageModel({}, dataPlatform)) {
+  const panels = [];
+  panels.push(textPanel('V15 Intelligence Brief', 0, 0, 24, 3, `### ZhangLab V15 Autonomous DataOps Intelligence\n\nBuild #${build} · ${semver} · commit ${commit}. V15 keeps V14 as the evidence spine, then adds autonomous operation score=${autonomous.summary.score}, incident readiness=${autonomous.summary.incidentReadinessScore}, FinOps=${autonomous.summary.finopsScore}, big-data depth=${autonomous.summary.dataDepthScore}, software coverage=${softwareCoverage.summary.score}. Spark/Flink/Kafka/Airflow/Trino/Superset/MinIO remain first-class data apps: ${dataPlatform.summary.readyApps || 0}/${dataPlatform.summary.observedApps || 0} observed apps ready, ${dataPlatform.summary.readyFlows || 0}/${dataPlatform.summary.flowTotal || 0} flows ready. Curated software coverage: ${softwareCoverage.summary.coveredCatalogTotal || 0}/${softwareCoverage.summary.catalogTotal || 0}; uncataloged runtime resources=${softwareCoverage.summary.discoveredUncatalogedTotal || 0}. No destructive actions are embedded.`));
+  panels.push(statPanel('V15 Intelligence', 0, 3, 3, 4, `cicd_v15_intelligence_score{build="${build}"}`, { min: 0, max: 100 }));
+  panels.push(statPanel('Autonomous Ops', 3, 3, 3, 4, `cicd_v15_autonomous_ops_score{build="${build}"}`, { min: 0, max: 100 }));
+  panels.push(statPanel('Big Data Depth', 6, 3, 3, 4, `cicd_v15_autonomous_dimension_score{dimension="bigdata-depth",build="${build}"}`, { min: 0, max: 100 }));
+  panels.push(statPanel('FinOps Capacity', 9, 3, 3, 4, `cicd_v15_autonomous_dimension_score{dimension="finops-capacity",build="${build}"}`, { min: 0, max: 100 }));
+  panels.push(statPanel('Incident Readiness', 12, 3, 3, 4, `cicd_v15_autonomous_dimension_score{dimension="incident-simulation",build="${build}"}`, { min: 0, max: 100 }));
+  panels.push(statPanel('Risk Score', 15, 3, 3, 4, `cicd_v15_risk_score{build="${build}"}`, { min: 0, max: 100 }));
+  panels.push(statPanel('Recovery Score', 18, 3, 3, 4, `cicd_v15_recovery_score{build="${build}"}`, { min: 0, max: 100 }));
+  panels.push(statPanel('Software Coverage', 21, 3, 3, 4, `cicd_v15_software_coverage_score{build="${build}"}`, { min: 0, max: 100 }));
+  const graphPanels = [
+    ['timeseries', 'V15 Intelligence Events', 0, 7, 12, 8, [esTarget('pipeline_version:v15')], { datasource: elasticDs, custom: { drawStyle: 'bars', fillOpacity: 50 } }],
+    ['timeseries', 'Risk Vector Trend', 12, 7, 12, 8, [esTarget('pipeline_version:v15 AND type:risk_vector')], { datasource: elasticDs, custom: { drawStyle: 'line', lineInterpolation: 'smooth', fillOpacity: 25 } }],
+    ['bargauge', 'Risk Severity Ranking', 0, 15, 12, 8, [promTarget(`topk(20,cicd_v15_risk_vector_severity{build="${build}"})`, '{{category}} {{name}}', 'A', 'table')], { min: 0, max: 100, panelOptions: { displayMode: 'gradient', orientation: 'horizontal', showUnfilled: true } }],
+    ['bargauge', 'DevOps Node Pod Distribution', 12, 15, 12, 8, [promTarget(`cicd_v15_node_pod_count{build="${build}"}`, '{{role}} {{node}}', 'A', 'table')], { decimals: 0, panelOptions: { displayMode: 'gradient', orientation: 'horizontal', showUnfilled: true } }],
+    ['state-timeline', 'Pod Readiness State Timeline', 0, 23, 12, 8, [promTarget('kube_pod_status_ready{condition="true"}', '{{namespace}}/{{pod}}')], { min: 0, max: 1, panelOptions: { mergeValues: true, showValue: 'always', rowHeight: 0.75 } }],
+    ['status-history', 'Node And Data Plane Status Wall', 12, 23, 12, 8, [promTarget('kube_node_status_condition{condition="Ready",status="true"}', 'node {{node}}'), promTarget('kube_pod_status_ready{condition="true",pod=~".*(spark|flink|kafka|airflow|trino|minio|superset).*"}', '{{namespace}}/{{pod}}', 'B')], { min: 0, max: 1, panelOptions: { showValue: 'never', rowHeight: 0.8 } }],
+    ['bargauge', 'Big Data App Readiness', 0, 31, 12, 8, [promTarget(`cicd_v15_data_app_score{build="${build}"}`, '{{app}} {{status}}', 'A', 'table')], { min: 0, max: 100, panelOptions: { displayMode: 'gradient', orientation: 'horizontal', showUnfilled: true } }],
+    ['state-timeline', 'Big Data Flow State', 12, 31, 12, 8, [promTarget(`cicd_v15_data_flow_score{build="${build}"}`, '{{source}} -> {{target}}')], { min: 0, max: 100, panelOptions: { mergeValues: true, showValue: 'always', rowHeight: 0.85 } }],
+    ['bargauge', 'Autonomous Dimension Score', 0, 39, 12, 8, [promTarget(`cicd_v15_autonomous_dimension_score{build="${build}"}`, '{{dimension}} {{status}}', 'A', 'table')], { min: 0, max: 100, panelOptions: { displayMode: 'gradient', orientation: 'horizontal', showUnfilled: true } }],
+    ['bargauge', 'Incident Simulation Readiness', 12, 39, 12, 8, [promTarget(`cicd_v15_incident_simulation_score{build="${build}"}`, '{{scenario}}', 'A', 'table')], { min: 0, max: 100, panelOptions: { displayMode: 'gradient', orientation: 'horizontal', showUnfilled: true } }],
+    ['nodeGraph', 'Service Intelligence Topology', 0, 47, 24, 9, [esTarget('pipeline_version:v15 AND (type:node_intelligence OR type:layer_intelligence OR type:bigdata_app OR type:bigdata_flow OR type:autonomous_dimension OR type:incident_simulation)')], { datasource: elasticDs }],
+    ['bargauge', 'Software Component Coverage', 0, 56, 8, 5, [promTarget(`cicd_v15_software_component_score{build="${build}"}`, '{{domain}}/{{software}} {{status}}', 'A', 'table')], { min: 0, max: 100, panelOptions: { displayMode: 'gradient', orientation: 'horizontal', showUnfilled: true } }],
+    ['bargauge', 'Data Quality Gate Score', 8, 56, 16, 5, [promTarget(`cicd_v15_data_quality_gate_score{build="${build}"}`, '{{app}} {{freshness_sla}}', 'A', 'table')], { min: 0, max: 100, panelOptions: { displayMode: 'gradient', orientation: 'horizontal', showUnfilled: true } }],
+  ];
+  for (const g of graphPanels) panels.push(panel(g[0], g[1], g[2], g[3], g[4], g[5], g[6], g[7]));
+  return { title: grafanaTitle, uid: 'zhanglab-v15-platform-intelligence', tags: ['jenkins','platform-intelligence','risk','recovery','dynamic','universal'], timezone: 'browser', schemaVersion: 39, version: 1, refresh: '10s', liveNow: true, editable: true, time: { from: 'now-24h', to: 'now' }, templating: { list: [{ name: 'build', type: 'custom', query: build, current: { text: build, value: build } }] }, panels };
+}
+
+function termsAgg(idValue, field, schema = 'segment', size = 10) { return { id: idValue, enabled: true, type: 'terms', schema, params: { field, size, order: 'desc', orderBy: '1' } }; }
+function metricAgg(type = 'count', field) { return { id: '1', enabled: true, type, schema: 'metric', params: field ? { field } : {} }; }
+const universalKibanaDataView = 'zhanglab-platform-pipeline-observability';
+const universalKibanaPrefix = 'zhanglab-platform-observability';
+function legacyVis(visId, title, visType, aggs, kql = 'pipeline_version : *') {
+  return { type: 'visualization', id: `${universalKibanaPrefix}-${visId}`, attributes: { title, visState: JSON.stringify({ title, type: visType, params: { addTooltip: true, addLegend: true, legendPosition: 'right', type: visType === 'pie' ? 'donut' : undefined }, aggs }), uiStateJSON: '{}', kibanaSavedObjectMeta: { searchSourceJSON: JSON.stringify({ query: { language: 'kuery', query: kql }, filter: [], indexRefName: 'kibanaSavedObjectMeta.searchSourceJSON.index' }) } }, references: [{ name: 'kibanaSavedObjectMeta.searchSourceJSON.index', type: 'index-pattern', id: universalKibanaDataView }] };
+}
+function dashboardObject(dashId, title, visualizations, kql) {
+  const panelsJSON = visualizations.map((vis, i) => ({ version: '8.0.0', type: 'visualization', gridData: { x: (i % 3) * 16, y: Math.floor(i / 3) * 12, w: 16, h: 12, i: String(i + 1) }, panelIndex: String(i + 1), embeddableConfig: {}, panelRefName: `panel_${i}` }));
+  return { type: 'dashboard', id: `${universalKibanaPrefix}-${dashId}`, attributes: { title, description: `Universal platform observability dashboard generated by the latest Jenkins intelligence pipeline.`, panelsJSON: JSON.stringify(panelsJSON), optionsJSON: JSON.stringify({ useMargins: true, syncColors: true }), timeRestore: false, kibanaSavedObjectMeta: { searchSourceJSON: JSON.stringify({ query: { language: 'kuery', query: kql }, filter: [] }) } }, references: visualizations.map((vis, i) => ({ name: `panel_${i}`, type: 'visualization', id: vis.id })) };
+}
+function buildKibana() {
+  const indexPattern = { type: 'index-pattern', id: universalKibanaDataView, attributes: { title: 'jenkins-*', timeFieldName: '@timestamp' } };
+  const vis = [
+    legacyVis('score-overview', '通用流水线评分总览', 'metric', [metricAgg('avg', 'score')], 'pipeline_version : * and (type : v15_summary or type : platform_summary or type : intelligence_stage)'),
+    legacyVis('autonomous-dimensions', '通用自治运维维度', 'histogram', [metricAgg('avg','autonomous_score'), termsAgg('2','key','bucket',12), termsAgg('3','status','bucket',6)], 'type : autonomous_dimension'),
+    legacyVis('event-trend', '通用事件趋势', 'line', [metricAgg(), { id: '2', enabled: true, type: 'date_histogram', schema: 'segment', params: { field: '@timestamp', interval: 'auto', min_doc_count: 0 } }], 'pipeline_version : *'),
+    legacyVis('software-coverage-matrix', '通用软件覆盖矩阵', 'histogram', [metricAgg('avg','software_coverage_score'), termsAgg('2','key','bucket',18), termsAgg('3','layer','bucket',12), termsAgg('4','status','bucket',6)], 'type : software_component_coverage'),
+    legacyVis('risk-by-layer', '通用风险层级', 'histogram', [metricAgg('avg','severity'), termsAgg('2','layer','bucket',12)], 'type : risk_vector'),
+    legacyVis('devops-node-distribution', '通用 DevOps 节点分布', 'histogram', [metricAgg('avg','pod_count'), termsAgg('2','node','bucket',12), termsAgg('3','role','bucket',6)], 'type : devops_node_pressure'),
+    legacyVis('bigdata-app-readiness', '通用大数据应用就绪度', 'histogram', [metricAgg('avg','app_score'), termsAgg('2','app_key','bucket',12)], 'type : bigdata_app'),
+    legacyVis('bigdata-flow-ledger', '通用大数据链路证据', 'table', [metricAgg('avg','app_score'), termsAgg('2','flow_key','bucket',12), termsAgg('3','status','bucket',6), termsAgg('4','source_app','bucket',10), termsAgg('5','target_app','bucket',10)], 'type : bigdata_flow'),
+    legacyVis('devops-optimization-ledger', '通用 DevOps 优化台账', 'table', [metricAgg(), termsAgg('2','type','bucket',20), termsAgg('3','node','bucket',12), termsAgg('4','namespace','bucket',16), termsAgg('5','status','bucket',10)], 'type : devops_optimization_summary or type : devops_node_pressure or type : devops_migration_candidate or type : devops_optimization_action'),
+  ];
+  const dashboards = [
+    dashboardObject('universal-command', 'ZhangLab Platform · Universal Observability Command', vis, 'pipeline_version : *'),
+  ];
+  return [indexPattern, ...vis, ...dashboards];
+}
+
+function buildPortal(evidence, ledger, risks, playbooks, scores, telemetry = buildPlatformTelemetryModel(), devops = buildDevopsOptimizationModel(telemetry), autonomous = buildAutonomousOpsModel(evidence, buildDataPlatformModel(evidence), telemetry, devops, risks, ledger), softwareCoverage = buildSoftwareCoverageModel(evidence, buildDataPlatformModel(evidence))) {
+  const palette = ['#00f0ff', '#ff3df2', '#ffe66d', '#39ff88', '#8b5cf6', '#ff6b3d', '#7dd3fc', '#faff00'];
+  const riskItems = risks.slice(0, 14).map((r, i) => `<button class="risk-card sonic" data-focus="${escHtml(r.name)}" data-tone="warn" style="--accent:${palette[i % palette.length]}"><span class="risk-rank">${String(i + 1).padStart(2, '0')}</span><b>${escHtml(r.severity)}</b><strong>${escHtml(r.category)}</strong><small>${escHtml(r.name)}</small></button>`).join('');
+  const playbookItems = playbooks.slice(0, 12).map((p, i) => `<button class="playbook sonic" data-playbook="${escHtml(p.name)}" data-tone="ok" style="--accent:${palette[(i + 2) % palette.length]}"><span>${escHtml(String(p.priority).padStart(2,'0'))}</span><h3>${escHtml(p.name)}</h3><p>${escHtml(p.action)}</p><small>${escHtml(p.success)}</small></button>`).join('');
+  const layerSource = (evidence.layerSummary || []).length ? evidence.layerSummary : [
+    { layer: 'devops-control', healthScore: scores.intelligenceScore },
+    { layer: 'data-platform', healthScore: scores.recoveryScore },
+    { layer: 'observability', healthScore: scores.observabilityScore },
+    { layer: 'application', healthScore: scores.serviceRate },
+    { layer: 'cluster-support', healthScore: scores.podRate },
+  ];
+  const layers = layerSource.map((l, i) => `<button class="orbit-node sonic" data-filter="${escHtml(l.layer)}" data-tone="nav" style="--a:${i * 72}deg;--accent:${palette[i % palette.length]}"><strong>${escHtml(l.layer)}</strong><span>${escHtml(l.healthScore)}%</span></button>`).join('');
+  const stageBars = ledger.slice(0, 48).map((s, i) => `<button class="stage-row sonic" data-stage="${escHtml(s.key)}" data-tone="tick" style="--score:${clamp(s.score)}%;--accent:${palette[i % palette.length]}"><span>${escHtml(s.key)}</span><b></b><em>${escHtml(s.status)}</em></button>`).join('');
+  const dataPlatform = buildDataPlatformModel(evidence);
+  const dataApps = dataPlatform.apps.map((app, i) => `<button class="data-card sonic ${escHtml(app.status)}" data-app="${escHtml(app.key)}" data-filter="${escHtml(app.key)}" data-tone="${app.status === 'ready' ? 'ok' : app.status === 'watch' ? 'tick' : 'warn'}" style="--accent:${palette[i % palette.length]}"><small>${escHtml(app.layer)}</small><strong>${escHtml(app.label)}</strong><b>${escHtml(app.score)}</b><span>${escHtml(app.podReady)}/${escHtml(app.podTotal)} pods · ${escHtml(app.endpointReady)}/${escHtml(app.endpointTotal)} endpoints · ${escHtml(app.restarts)} restarts</span><em>${escHtml(app.role)}</em></button>`).join('');
+  const dataFlows = dataPlatform.flows.map((flow, i) => `<button class="flow-card sonic ${escHtml(flow.status)}" data-flow="${escHtml(flow.key)}" data-filter="${escHtml(flow.key)}" data-tone="${flow.status === 'ready' ? 'ok' : flow.status === 'watch' ? 'tick' : 'warn'}" style="--accent:${palette[(i + 3) % palette.length]}"><span>${escHtml(flow.source)}</span><b>→</b><span>${escHtml(flow.target)}</span><strong>${escHtml(flow.score)}</strong><em>${escHtml(flow.purpose)}</em></button>`).join('');
+  const devopsNodes = devops.nodes.map((node, i) => `<button class="data-card sonic ${node.ready ? 'ready' : 'attention'}" data-filter="${escHtml(node.node)}" data-tone="${node.ready ? 'ok' : 'warn'}" style="--accent:${palette[(i + 4) % palette.length]}"><small>${escHtml(node.role)}</small><strong>${escHtml(node.node)}</strong><b>${escHtml(node.score)}</b><span>${escHtml(node.pods)} pods · ${escHtml(node.readyPods)} ready · ${escHtml(node.restartTotal)} restarts</span><em>${escHtml(node.kubeletVersion)} · ${escHtml(node.osImage)}</em></button>`).join('');
+  const devopsCandidates = devops.candidates.length ? devops.candidates.slice(0, 18).map((pod, i) => `<button class="flow-card sonic watch" data-filter="${escHtml(pod.pod)}" data-tone="tick" style="--accent:${palette[(i + 1) % palette.length]}"><span>${escHtml(pod.namespace)}</span><b>→</b><span>${escHtml(pod.node)}</span><strong>${escHtml(pod.restarts)}</strong><em>${escHtml(pod.pod)} · ${escHtml(pod.reason)}</em></button>`).join('') : '<button class="flow-card sonic ready" data-tone="ok"><span>当前没有安全候选</span><b>✓</b><span>保持现状</span><strong>0</strong><em>V15 不会自动迁移 Pod，只展示可复核候选。</em></button>';
+  const autonomousDimensions = autonomous.dimensions.map((item, i) => `<button class="data-card sonic ${escHtml(item.status)}" data-filter="${escHtml(item.key)}" data-tone="${item.status === 'ready' ? 'ok' : item.status === 'watch' ? 'tick' : 'warn'}" style="--accent:${palette[(i + 5) % palette.length]}"><small>${escHtml(item.layer)}</small><strong>${escHtml(item.label)}</strong><b>${escHtml(item.score)}</b><span>${escHtml(item.message)}</span><em>${escHtml(item.key)}</em></button>`).join('');
+  const incidentCards = autonomous.incidents.map((item, i) => `<button class="flow-card sonic ${item.score >= 90 ? 'ready' : item.score >= 75 ? 'watch' : 'attention'}" data-filter="${escHtml(item.key)}" data-tone="${item.score >= 85 ? 'ok' : 'warn'}" style="--accent:${palette[(i + 2) % palette.length]}"><span>${escHtml(item.blastRadius)}</span><b>RTO</b><span>${escHtml(item.rtoMinutes)}m</span><strong>${escHtml(item.score)}</strong><em>${escHtml(item.scenario)} · ${escHtml(item.validation)}</em></button>`).join('');
+  const qualityCards = autonomous.dataQuality.map((item, i) => `<button class="flow-card sonic ${escHtml(item.freshnessSla)}" data-filter="${escHtml(item.app)}" data-tone="${item.freshnessSla === 'green' ? 'ok' : item.freshnessSla === 'watch' ? 'tick' : 'warn'}" style="--accent:${palette[(i + 6) % palette.length]}"><span>${escHtml(item.app)}</span><b>${escHtml(item.checkpoint)}</b><span>${escHtml(item.freshnessSla)}</span><strong>${escHtml(item.score)}</strong><em>${escHtml(item.rule)}</em></button>`).join('');
+  const softwareCards = softwareCoverage.software.map((item, i) => `<button class="data-card sonic ${escHtml(item.status)}" data-filter="${escHtml(item.key)}" data-tone="${item.status === 'ready' ? 'ok' : item.status === 'watch' ? 'tick' : 'warn'}" style="--accent:${palette[(i + 1) % palette.length]}"><small>${escHtml(item.domain)}</small><strong>${escHtml(item.label)}</strong><b>${escHtml(item.score)}</b><span>${escHtml(item.podReady)}/${escHtml(item.podTotal)} pods · ${escHtml(item.serviceTotal)} svc · ${escHtml(item.imageTotal)} images · ${escHtml(item.helmReleaseTotal)} helm</span><em>${escHtml(item.usage)}</em></button>`).join('');
+  const softwareGapCards = softwareCoverage.gaps.length ? softwareCoverage.gaps.map((item, i) => `<button class="flow-card sonic ${escHtml(item.status)}" data-filter="${escHtml(item.key)}" data-tone="${item.status === 'missing' ? 'warn' : 'tick'}" style="--accent:${palette[(i + 4) % palette.length]}"><span>${escHtml(item.domain)}</span><b>${escHtml(item.status)}</b><span>${escHtml(item.label)}</span><strong>${escHtml(item.score)}</strong><em>${escHtml(item.action)}</em></button>`).join('') : '<button class="flow-card sonic ready" data-tone="ok"><span>软件覆盖</span><b>✓</b><span>无明显缺口</span><strong>100</strong><em>所有目录组件均有可复核证据。</em></button>';
+  const metricTiles = [
+    ['Intelligence', scores.intelligenceScore, 'V15 智能总分'],
+    ['Autonomy', scores.autonomousOpsScore, '自治运维'],
+    ['FinOps', scores.finopsScore, '成本容量'],
+    ['Incident', scores.incidentReadinessScore, '事故演练'],
+    ['Data', scores.dataPlatformScore, '大数据评分'],
+    ['Software', scores.softwareCoverageScore, '软件覆盖'],
+    ['DevOps', scores.devopsOptimizationScore, '平台优化'],
+    ['Telemetry', scores.telemetryScore, '升级体检'],
+    ['Risk', scores.riskScore, '风险评分'],
+    ['Recovery', scores.recoveryScore, '恢复能力'],
+    ['Observe', scores.observabilityScore, '观测闭环'],
+    ['Service', `${scores.serviceRate}%`, '服务探针'],
+    ['Pods', `${scores.podRate}%`, 'Pod Ready'],
+  ].map((m, i) => `<button class="metric sonic" data-filter="${escHtml(m[0].toLowerCase())}" data-tone="tick" style="--accent:${palette[i % palette.length]}"><small>${escHtml(m[2])}</small><b>${escHtml(m[1])}</b><span>${escHtml(m[0])}</span></button>`).join('');
+  const evidenceJson = JSON.stringify({ summary: { build, semver, commit, scores, inherited: evidence.summary || {}, risks: risks.length, playbooks: playbooks.length, dataPlatform: dataPlatform.summary, telemetry: telemetry.summary, devops: devops.summary, autonomous: autonomous.summary, softwareCoverage: softwareCoverage.summary }, risks, playbooks, ledger, dataPlatform, telemetry, devops, autonomous, softwareCoverage }).replace(/</g, '\\u003c');
+  return `<!doctype html>
+<html lang="zh-CN" data-visual-rev="v15-intelligence-hypergrid-20260601" data-sonic-rev="v15-sonic-command-20260601" data-sound-engine="sound-rev-v2">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ZhangLab V15 Autonomous DataOps Intelligence</title>
+<style>
+:root{color-scheme:dark;--void:#04030a;--ink:#f8fbff;--muted:#9caec4;--line:rgba(185,234,255,.2);--cyan:#00f0ff;--mag:#ff3df2;--gold:#ffe66d;--green:#39ff88;--orange:#ff6b3d;--blue:#7dd3fc}*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;min-height:100vh;color:var(--ink);font-family:"DIN Condensed","Avenir Next Condensed","Bahnschrift","Segoe UI",sans-serif;background:#04030a;overflow-x:hidden;cursor:crosshair}body:before{content:"";position:fixed;inset:0;z-index:-4;background:radial-gradient(circle at 12% 4%,rgba(0,240,255,.34),transparent 28%),radial-gradient(circle at 88% 10%,rgba(255,61,242,.24),transparent 30%),radial-gradient(circle at 60% 100%,rgba(57,255,136,.13),transparent 35%),linear-gradient(135deg,#06030d 0,#07172a 42%,#16091d 72%,#03050a 100%)}body:after{content:"";position:fixed;inset:0;z-index:-2;pointer-events:none;background:linear-gradient(rgba(255,255,255,.045) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.035) 1px,transparent 1px),repeating-linear-gradient(0deg,rgba(255,255,255,.035) 0 1px,transparent 1px 4px);background-size:34px 34px,34px 34px,100% 5px;mask-image:linear-gradient(to bottom,#000,rgba(0,0,0,.5),transparent 96%)}#field{position:fixed;inset:0;width:100vw;height:100vh;z-index:-3;pointer-events:none;display:block}button{font:inherit}.sonic{position:relative;overflow:hidden}.sonic:focus-visible{outline:2px solid var(--gold);outline-offset:3px}.ripple{position:absolute;border-radius:50%;transform:translate(-50%,-50%);width:12px;height:12px;background:radial-gradient(circle,rgba(255,255,255,.9),rgba(0,240,255,.15),transparent 72%);pointer-events:none;animation:ripple .55s ease-out forwards}.shell{position:relative;z-index:1;max-width:1920px;margin:0 auto;padding:6px 8px 8px}.hud{display:grid;grid-template-columns:minmax(0,1.22fr) minmax(330px,.6fr);gap:8px;min-height:320px}.hero,.orbital,.panel{border:1px solid var(--line);border-radius:8px;background:linear-gradient(145deg,rgba(6,14,28,.86),rgba(11,7,24,.68));box-shadow:0 18px 70px rgba(0,0,0,.42),inset 0 0 40px rgba(0,240,255,.05);backdrop-filter:blur(18px);position:relative;overflow:hidden}.hero{padding:12px;display:grid;grid-template-rows:auto 1fr auto;isolation:isolate}.hero:before,.panel:before{content:"";position:absolute;inset:-40%;background:conic-gradient(from 120deg,transparent,rgba(0,240,255,.16),transparent,rgba(255,61,242,.12),transparent);animation:turn 18s linear infinite;z-index:-1}.kicker{display:flex;gap:6px;flex-wrap:wrap}.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid rgba(255,255,255,.17);border-radius:999px;padding:5px 8px;background:rgba(4,8,18,.62);color:#dffbff;font-weight:900;font-size:10px;text-transform:uppercase}.chip:before{content:"";width:7px;height:7px;border-radius:50%;background:var(--accent,var(--cyan));box-shadow:0 0 16px var(--accent,var(--cyan))}.title{align-self:center}.title h1{margin:6px 0 6px;font-size:clamp(36px,4.7vw,72px);line-height:.82;letter-spacing:0;text-transform:uppercase;text-shadow:0 0 28px rgba(0,240,255,.25),0 0 60px rgba(255,61,242,.18)}.title h1 span{display:block;color:transparent;-webkit-text-stroke:1px rgba(255,255,255,.78);text-shadow:none}.lead{max-width:880px;color:#c8d7e8;font-size:13px;line-height:1.36}.nav{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.btn{min-height:32px;border:1px solid rgba(255,255,255,.16);border-radius:8px;background:linear-gradient(135deg,rgba(0,240,255,.14),rgba(255,61,242,.1));color:#f7fbff;padding:6px 9px;cursor:pointer;font-weight:950;letter-spacing:.02em;text-transform:uppercase;transition:.18s ease}.btn:hover,.btn.active{transform:translateY(-2px);border-color:var(--accent,var(--cyan));box-shadow:0 0 28px rgba(0,240,255,.18)}.btn.sound-on{--accent:var(--green)}.btn.sound-off{--accent:var(--orange)}.status-strip{display:grid;grid-template-columns:repeat(9,1fr);gap:6px;margin-top:8px}.metric{border:1px solid rgba(255,255,255,.14);border-radius:8px;background:linear-gradient(180deg,rgba(255,255,255,.08),rgba(255,255,255,.02));min-height:62px;text-align:left;color:var(--ink);padding:8px;cursor:pointer}.metric b{display:block;font-size:23px;line-height:1;color:var(--accent);text-shadow:0 0 18px var(--accent)}.metric small,.metric span{display:block;color:var(--muted);font-weight:900}.metric small{font-size:10px}.metric span{margin-top:3px;color:#fff;font-size:12px}.orbital{min-height:320px;display:grid;place-items:center}.orbital:before{content:"";position:absolute;width:290px;height:290px;border-radius:50%;border:1px dashed rgba(255,255,255,.16);box-shadow:0 0 90px rgba(0,240,255,.13),inset 0 0 90px rgba(255,61,242,.08);animation:turn 35s linear infinite}.orbital:after{content:"";position:absolute;width:190px;height:190px;border-radius:50%;border:1px solid rgba(0,240,255,.24);animation:turn 24s linear reverse infinite}.core{width:118px;height:118px;border-radius:50%;display:grid;place-items:center;text-align:center;background:radial-gradient(circle,rgba(0,240,255,.32),rgba(255,61,242,.13) 45%,rgba(3,7,18,.2) 70%,transparent);border:1px solid rgba(0,240,255,.45);box-shadow:0 0 70px rgba(0,240,255,.24),0 0 120px rgba(255,61,242,.14);z-index:2}.core b{font-size:36px;line-height:.85}.core span{color:#ccefff;font-weight:950;font-size:11px}.orbit-node{position:absolute;left:50%;top:50%;width:112px;min-height:50px;margin:-25px -56px;transform:rotate(var(--a)) translateX(125px) rotate(calc(-1 * var(--a)));border:1px solid color-mix(in srgb,var(--accent) 56%,white 0%);border-radius:8px;background:rgba(3,8,18,.78);color:#f7fbff;text-align:left;padding:7px;cursor:pointer;box-shadow:0 0 28px color-mix(in srgb,var(--accent) 25%,transparent);animation:pulse 2.8s ease-in-out infinite alternate}.orbit-node strong{display:block;font-size:10px;color:#d9f8ff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.orbit-node span{font-size:18px;color:var(--accent);font-weight:950}.views{margin-top:8px}.view{display:none;grid-template-columns:repeat(12,1fr);gap:8px}.view.active{display:grid}.panel{padding:10px;min-height:160px}.wide{grid-column:span 12}.half{grid-column:span 6}.third{grid-column:span 4}.panel h2{margin:0 0 8px;font-size:20px;text-transform:uppercase}.risk-list,.playbooks,.matrix{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:8px}.risk-card,.playbook,.matrix button,.stage-row{border:1px solid rgba(255,255,255,.14);border-radius:8px;background:linear-gradient(145deg,rgba(9,20,38,.88),rgba(26,9,34,.62));color:#f7fbff;text-align:left;cursor:pointer;transition:.18s ease}.risk-card{min-height:102px;padding:9px;display:grid;grid-template-columns:38px 1fr;gap:8px}.risk-card:hover,.playbook:hover,.matrix button:hover,.stage-row:hover{transform:translateY(-3px) scale(1.01);border-color:var(--accent);box-shadow:0 0 35px color-mix(in srgb,var(--accent) 22%,transparent)}.risk-rank{grid-row:span 3;color:var(--accent);font-weight:950}.risk-card b{font-size:29px;color:var(--accent);line-height:.9}.risk-card strong{font-size:12px;text-transform:uppercase}.risk-card small{grid-column:2;color:var(--muted);font-size:11px}.playbook{padding:10px}.playbook span{color:var(--accent);font-weight:950}.playbook h3{margin:5px 0;font-size:14px}.playbook p{color:#d5e7f5;font-size:12px;line-height:1.34}.playbook small{color:var(--muted)}.stage-row{display:grid;grid-template-columns:180px 1fr 92px;gap:10px;align-items:center;margin:5px 0;padding:7px}.stage-row b{height:10px;width:var(--score);border-radius:999px;background:linear-gradient(90deg,var(--orange),var(--gold),var(--green));box-shadow:0 0 18px var(--accent)}.stage-row em{font-style:normal;color:var(--muted);font-weight:900}.matrix button{min-height:58px;padding:10px;font-weight:950}.detail{white-space:pre-wrap;color:#d6e6f4;background:rgba(0,0,0,.28);border:1px solid var(--line);padding:10px;border-radius:8px;max-height:320px;overflow:auto;font-family:"SFMono-Regular","Cascadia Mono",monospace;font-size:12px}.sound-meter{height:6px;border-radius:999px;background:linear-gradient(90deg,var(--cyan),var(--mag),var(--gold),var(--green));box-shadow:0 0 24px rgba(0,240,255,.36);transform-origin:left;animation:meter 1.2s ease-in-out infinite alternate}.sonic-toast{position:fixed;right:18px;bottom:18px;z-index:20;border:1px solid rgba(255,255,255,.2);border-radius:8px;background:rgba(4,8,18,.82);backdrop-filter:blur(14px);padding:10px 12px;color:#eaffff;font-weight:950;opacity:0;transform:translateY(12px);transition:.18s ease}.sonic-toast.show{opacity:1;transform:none}@keyframes turn{to{transform:rotate(360deg)}}@keyframes pulse{from{filter:saturate(1);opacity:.86}to{filter:saturate(1.35);opacity:1}}@keyframes ripple{to{width:260px;height:260px;opacity:0}}@keyframes meter{from{transform:scaleX(.2)}to{transform:scaleX(1)}}@media(max-width:1180px){.hud{grid-template-columns:1fr}.status-strip{grid-template-columns:repeat(3,1fr)}.half,.third{grid-column:span 12}.orbital{min-height:320px}.orbit-node{transform:none;position:relative;left:auto;top:auto;margin:6px;display:inline-block}.orbital{display:flex;align-items:center;justify-content:center;flex-wrap:wrap}.orbital:before,.orbital:after{display:none}}@media(max-width:720px){.shell{padding:8px}.title h1{font-size:42px}.status-strip{grid-template-columns:1fr}.stage-row{grid-template-columns:1fr}.view{grid-template-columns:1fr}.wide,.half,.third{grid-column:auto}}
+</style><style>.data-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px}.data-card{min-height:138px;border:1px solid rgba(255,255,255,.14);border-radius:8px;background:linear-gradient(145deg,rgba(4,20,34,.92),rgba(23,7,30,.72));color:#f7fbff;text-align:left;padding:11px;cursor:pointer;transition:.18s ease}.data-card.ready{box-shadow:inset 0 0 34px rgba(57,255,136,.08)}.data-card.watch{box-shadow:inset 0 0 34px rgba(255,230,109,.08)}.data-card.attention,.data-card.missing{box-shadow:inset 0 0 34px rgba(255,107,61,.12)}.data-card.discovered{box-shadow:inset 0 0 34px rgba(125,211,252,.1)}.data-card small,.data-card span,.data-card em{display:block;color:var(--muted);font-style:normal;font-size:11px}.data-card strong{display:block;font-size:17px;margin:5px 0;color:#fff}.data-card b{font-size:34px;line-height:1;color:var(--accent);text-shadow:0 0 20px var(--accent)}.flow-map{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:8px}.flow-card{min-height:82px;border:1px solid rgba(255,255,255,.14);border-radius:8px;background:linear-gradient(135deg,rgba(0,240,255,.08),rgba(255,61,242,.09));color:#f7fbff;text-align:left;padding:10px;cursor:pointer}.flow-card span{font-weight:950}.flow-card b{margin:0 8px;color:var(--accent);font-size:22px}.flow-card strong{float:right;color:var(--accent);font-size:24px}.flow-card em{display:block;clear:both;color:var(--muted);font-style:normal;font-size:12px;margin-top:7px}.data-card:hover,.flow-card:hover{transform:translateY(-3px) scale(1.01);border-color:var(--accent);box-shadow:0 0 35px color-mix(in srgb,var(--accent) 24%,transparent)}</style></head><body><canvas id="field"></canvas><main class="shell"><section class="hud"><div class="hero"><div class="kicker"><span class="chip" style="--accent:#00f0ff">V14 Evidence Spine</span><span class="chip" style="--accent:#ff3df2">V15 Autonomous DataOps</span><span class="chip" style="--accent:#39ff88">Autonomy ${autonomous.summary.score}</span><span class="chip" style="--accent:#7dd3fc">Software ${softwareCoverage.summary.score}</span><span class="chip" style="--accent:#ffe66d">Build #${build}</span><span class="chip" style="--accent:#39ff88">Commit ${commit}</span><span class="chip" style="--accent:#ff6b3d">+${scores.complexityLiftPercent}% complexity</span></div><div class="title"><h1>Autonomous <span>DataOps Command</span></h1><p class="lead">V15 在 V14 已跑通的平台证据上，新增自治运维、事故模拟、FinOps 容量画像、数据质量门禁和全软件覆盖矩阵。所有动作保持证据优先：只展示可验证建议，不自动删除、不自动迁移 Stateful 服务、不隐藏失败。</p><div class="nav"><button class="btn sonic active" data-view="cockpit" data-tone="nav">总览 Cockpit</button><button class="btn sonic" data-view="autonomous" data-tone="nav">Autonomous Ops</button><button class="btn sonic" data-view="data" data-tone="ok">Data Lab</button><button class="btn sonic" data-view="software" data-tone="nav">Software Map</button><button class="btn sonic" data-view="devops" data-tone="nav">DevOps Optimize</button><button class="btn sonic" data-view="risk" data-tone="warn">Risk Radar</button><button class="btn sonic" data-view="recovery" data-tone="ok">Recovery Room</button><button class="btn sonic" data-view="stages" data-tone="tick">Stage Ledger</button><button class="btn sonic" data-view="matrix" data-tone="nav">Command Matrix</button><button class="btn sonic sound-on" id="soundToggle" data-tone="ok">Sound ON</button><button class="btn sonic" id="copyJson" data-tone="tick">复制 evidence</button></div></div><div><div class="sound-meter"></div><div class="kicker" style="margin-top:12px"><span class="chip" style="--accent:#7dd3fc">public https://${publicHost}/</span><span class="chip" style="--accent:#faff00">internal http://192.168.1.58:${portalNodePort}/</span><span class="chip" style="--accent:#39ff88">software ${softwareCoverage.summary.coveredCatalogTotal}/${softwareCoverage.summary.catalogTotal}</span><span class="chip" style="--accent:#00f0ff">data ${dataPlatform.summary.readyApps}/${dataPlatform.summary.observedApps} apps</span><span class="chip" style="--accent:#ff6b3d">metrics ${telemetry.summary.metricsStatus}</span></div></div></div><div class="orbital"><div class="core"><div><b>${scores.autonomousOpsScore}</b><br><span>AUTO</span></div></div>${layers}</div></section><section class="status-strip">${metricTiles}</section><section class="views"><div class="view active" id="view-cockpit"><div class="panel wide"><h2>V15 自治大数据指挥舱</h2><div class="matrix"><button class="sonic" data-view="autonomous" data-tone="nav">进入 Autonomous Ops</button><button class="sonic" data-view="data" data-tone="ok">进入 Data Lab</button><button class="sonic" data-view="software" data-tone="nav">进入 Software Map</button><button class="sonic" data-view="devops" data-tone="nav">进入 DevOps Optimize</button><button class="sonic" data-filter="jenkins" data-tone="nav">Jenkins CI/CD</button><button class="sonic" data-filter="gitlab" data-tone="nav">GitLab 触发</button><button class="sonic" data-filter="argocd" data-tone="nav">ArgoCD GitOps</button><button class="sonic" data-filter="harbor" data-tone="nav">Harbor 镜像仓库</button><button class="sonic" data-filter="prometheus" data-tone="ok">Prometheus 指标</button><button class="sonic" data-filter="grafana" data-tone="ok">Grafana 图表</button><button class="sonic" data-filter="kibana" data-tone="ok">Kibana 日志</button><button class="sonic" data-filter="spark-operator" data-tone="nav">Spark Operator 批处理控制</button><button class="sonic" data-filter="flink" data-tone="nav">Flink 实时流计算</button><button class="sonic" data-filter="kafka" data-tone="nav">Kafka 日志与事件总线</button><button class="sonic" data-filter="airflow" data-tone="tick">Airflow DAG 编排</button><button class="sonic" data-filter="trino" data-tone="tick">Trino 查询引擎</button><button class="sonic" data-filter="superset" data-tone="ok">Superset BI 展示</button><button class="sonic" data-filter="minio" data-tone="ok">MinIO 对象湖</button><button class="sonic" data-filter="software-coverage" data-tone="warn">软件覆盖缺口</button></div></div></div><div class="view" id="view-autonomous"><div class="panel wide"><h2>Autonomous Ops Dimensions</h2><div class="data-grid">${autonomousDimensions}</div></div><div class="panel wide"><h2>Incident Simulation Matrix</h2><div class="flow-map">${incidentCards}</div></div><div class="panel wide"><h2>Data Quality Gates</h2><div class="flow-map">${qualityCards}</div></div></div><div class="view" id="view-data"><div class="panel wide"><h2>Big Data Application Lab</h2><div class="data-grid">${dataApps}</div></div><div class="panel wide"><h2>Data Flow Evidence Map</h2><div class="flow-map">${dataFlows}</div></div></div><div class="view" id="view-software"><div class="panel wide"><h2>Platform Software Coverage Map</h2><div class="data-grid">${softwareCards}</div></div><div class="panel wide"><h2>Software Coverage Gap Queue</h2><div class="flow-map">${softwareGapCards}</div></div></div><div class="view" id="view-devops"><div class="panel wide"><h2>DevOps Node Pressure</h2><div class="data-grid">${devopsNodes}</div></div><div class="panel wide"><h2>Stateless Migration Candidates</h2><div class="flow-map">${devopsCandidates}</div></div></div><div class="view" id="view-risk"><div class="panel wide" id="risk"><h2>Risk Radar</h2><div class="risk-list">${riskItems}</div></div></div><div class="view" id="view-recovery"><div class="panel wide" id="recovery"><h2>Recovery Room</h2><div class="playbooks">${playbookItems}</div></div></div><div class="view" id="view-stages"><div class="panel wide" id="stages"><h2>Intelligence Stage Ledger</h2>${stageBars}</div></div><div class="view" id="view-matrix"><div class="panel half"><h2>Command Matrix</h2><div class="matrix"><button class="sonic" data-filter="software-coverage" data-tone="nav">Software Coverage</button><button class="sonic" data-filter="autonomous" data-tone="nav">Autonomous</button><button class="sonic" data-filter="observability" data-tone="nav">Observability</button><button class="sonic" data-filter="data-platform" data-tone="nav">Data Platform</button><button class="sonic" data-filter="devops" data-tone="nav">DevOps Optimize</button><button class="sonic" data-filter="incident" data-tone="warn">Incident</button><button class="sonic" data-filter="finops" data-tone="warn">FinOps</button><button class="sonic" data-filter="quality" data-tone="tick">Data Quality</button><button class="sonic" data-filter="upgrade-gate" data-tone="warn">Upgrade Gate</button><button class="sonic" data-filter="recovery" data-tone="ok">Recovery</button><button class="sonic" data-filter="risk" data-tone="warn">Risk Queue</button><button class="sonic" data-filter="argocd" data-tone="nav">ArgoCD</button></div></div><div class="panel half"><h2>Drilldown Detail</h2><pre class="detail" id="detail">点击任意软件、大数据应用、自治维度、事故演练、DevOps 节点或数据质量门禁，会在这里展示对应 V15 证据。</pre></div></div></section></main><div class="sonic-toast" id="toast">click acknowledged</div><script id="v15-data" type="application/json">${evidenceJson}</script><script>
+var data=JSON.parse(document.getElementById('v15-data').textContent);var detail=document.getElementById('detail');var toast=document.getElementById('toast');var soundEnabled=true;var audioCtx=null;function ensureAudio(){if(!audioCtx){audioCtx=new (window.AudioContext||window.webkitAudioContext)()}if(audioCtx.state==='suspended'){audioCtx.resume()}return audioCtx}function beep(kind){if(!soundEnabled)return;try{var ctx=ensureAudio();var now=ctx.currentTime;var osc=ctx.createOscillator();var gain=ctx.createGain();var map={nav:[520,740],warn:[240,160],ok:[660,990],tick:[880,1180]};var pair=map[kind]||map.tick;osc.type=kind==='warn'?'sawtooth':'triangle';osc.frequency.setValueAtTime(pair[0],now);osc.frequency.exponentialRampToValueAtTime(pair[1],now+.08);gain.gain.setValueAtTime(.0001,now);gain.gain.exponentialRampToValueAtTime(.07,now+.012);gain.gain.exponentialRampToValueAtTime(.0001,now+.16);osc.connect(gain);gain.connect(ctx.destination);osc.start(now);osc.stop(now+.18)}catch(e){}}function acknowledge(el,kind){beep(kind||el.dataset.tone||'tick');toast.textContent=(el.textContent||'click').trim().slice(0,42);toast.classList.add('show');clearTimeout(window.__toastTimer);window.__toastTimer=setTimeout(function(){toast.classList.remove('show')},900)}function ripple(el,ev){var r=document.createElement('span');r.className='ripple';var rect=el.getBoundingClientRect();r.style.left=((ev&&ev.clientX?ev.clientX:rect.left+rect.width/2)-rect.left)+'px';r.style.top=((ev&&ev.clientY?ev.clientY:rect.top+rect.height/2)-rect.top)+'px';el.appendChild(r);setTimeout(function(){r.remove()},650)}function showView(name){document.querySelectorAll('.view').forEach(function(v){v.classList.toggle('active',v.id==='view-'+name)});document.querySelectorAll('[data-view]').forEach(function(b){b.classList.toggle('active',b.dataset.view===name)})}function drill(q){q=String(q||'').toLowerCase();var appSource=(data.dataPlatform&&data.dataPlatform.apps)||[];var flowSource=(data.dataPlatform&&data.dataPlatform.flows)||[];var softwareSource=[data.softwareCoverage&&data.softwareCoverage.summary||{}].concat((data.softwareCoverage&&data.softwareCoverage.software)||[],(data.softwareCoverage&&data.softwareCoverage.discovered)||[],(data.softwareCoverage&&data.softwareCoverage.gaps)||[]);var telemetrySource=[data.telemetry||{}].concat((data.telemetry&&data.telemetry.nodes)||[],(data.telemetry&&data.telemetry.recentUnhealthyEvents)||[]);var devopsSource=[data.devops&&data.devops.summary||{}].concat((data.devops&&data.devops.nodes)||[],(data.devops&&data.devops.candidates)||[],(data.devops&&data.devops.actions)||[]);var autonomousSource=[data.autonomous&&data.autonomous.summary||{}].concat((data.autonomous&&data.autonomous.dimensions)||[],(data.autonomous&&data.autonomous.incidents)||[],(data.autonomous&&data.autonomous.finops)||[],(data.autonomous&&data.autonomous.dataQuality)||[],(data.autonomous&&data.autonomous.controls)||[]);detail.textContent=JSON.stringify({software:softwareSource.filter(function(r){return JSON.stringify(r).toLowerCase().includes(q)||q==='software'||q==='software-coverage'}).slice(0,40),autonomous:autonomousSource.filter(function(r){return JSON.stringify(r).toLowerCase().includes(q)||q==='autonomous'||q==='incident'||q==='finops'||q==='quality'}).slice(0,30),devops:devopsSource.filter(function(r){return JSON.stringify(r).toLowerCase().includes(q)||q==='devops'}).slice(0,24),telemetry:telemetrySource.filter(function(r){return JSON.stringify(r).toLowerCase().includes(q)||q==='upgrade-gate'}).slice(0,20),dataApps:appSource.filter(function(r){return JSON.stringify(r).toLowerCase().includes(q)}).slice(0,10),dataFlows:flowSource.filter(function(r){return JSON.stringify(r).toLowerCase().includes(q)}).slice(0,10),risks:data.risks.filter(function(r){return JSON.stringify(r).toLowerCase().includes(q)}).slice(0,10),stages:data.ledger.filter(function(r){return JSON.stringify(r).toLowerCase().includes(q)}).slice(0,10),playbooks:data.playbooks.filter(function(r){return JSON.stringify(r).toLowerCase().includes(q)}).slice(0,10)},null,2)}document.addEventListener('pointerdown',function(ev){var el=ev.target.closest('button');if(!el)return;ripple(el,ev);acknowledge(el,el.dataset.tone)});document.querySelectorAll('[data-view]').forEach(function(b){b.addEventListener('click',function(){showView(b.dataset.view)})});document.querySelectorAll('[data-focus]').forEach(function(b){b.addEventListener('click',function(){showView('matrix');drill(b.dataset.focus)})});document.querySelectorAll('[data-filter]').forEach(function(b){b.addEventListener('click',function(){showView('matrix');drill(b.dataset.filter)})});document.querySelectorAll('[data-playbook]').forEach(function(b){b.addEventListener('click',function(){showView('matrix');drill(b.dataset.playbook)})});document.querySelectorAll('[data-stage]').forEach(function(b){b.addEventListener('click',function(){showView('matrix');drill(b.dataset.stage)})});document.getElementById('soundToggle').addEventListener('click',function(){soundEnabled=!soundEnabled;this.textContent=soundEnabled?'Sound ON':'Sound OFF';this.classList.toggle('sound-on',soundEnabled);this.classList.toggle('sound-off',!soundEnabled);if(soundEnabled)beep('ok')});document.getElementById('copyJson').addEventListener('click',async function(){var url=location.origin+location.pathname.replace(/\\/$/,'')+'/evidence.json';try{await navigator.clipboard.writeText(url);detail.textContent='copied '+url}catch(e){detail.textContent=url}});var c=document.getElementById('field'),ctx=c.getContext('2d'),pts=[];function size(){c.width=innerWidth*devicePixelRatio;c.height=innerHeight*devicePixelRatio;pts=Array.from({length:130},function(_,i){return{x:Math.random()*c.width,y:Math.random()*c.height,vx:(Math.random()-.5)*.9,vy:(Math.random()-.5)*.65,h:i%8,r:1+Math.random()*2}})}addEventListener('resize',size);size();var colors=['#00f0ff','#ff3df2','#ffe66d','#39ff88','#8b5cf6','#ff6b3d','#7dd3fc','#faff00'];function frame(){ctx.clearRect(0,0,c.width,c.height);ctx.globalCompositeOperation='lighter';pts.forEach(function(p){p.x+=p.vx;p.y+=p.vy;if(p.x<0||p.x>c.width)p.vx*=-1;if(p.y<0||p.y>c.height)p.vy*=-1});for(var i=0;i<pts.length;i++){for(var j=i+1;j<pts.length;j++){var a=pts[i],b=pts[j],d=Math.hypot(a.x-b.x,a.y-b.y);if(d<135*devicePixelRatio){ctx.strokeStyle='rgba(0,240,255,'+(.11*(1-d/(135*devicePixelRatio)))+')';ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke()}}}pts.forEach(function(p){ctx.fillStyle=colors[p.h];ctx.globalAlpha=.62;ctx.beginPath();ctx.arc(p.x,p.y,p.r*devicePixelRatio,0,Math.PI*2);ctx.fill()});ctx.globalAlpha=1;ctx.globalCompositeOperation='source-over';requestAnimationFrame(frame)}frame();setInterval(function(){fetch('evidence.json?ts='+Date.now(),{cache:'no-store'}).catch(function(){})},60000);
+</script><script>
+(function(){window.__v15SoundEngine='sound-rev-v2';var master=null,lastSoundAt=0;function context(){var C=window.AudioContext||window.webkitAudioContext;if(!C)return null;if(!audioCtx){audioCtx=new C();master=audioCtx.createGain();master.gain.value=.28;master.connect(audioCtx.destination)}if(audioCtx.state==='suspended')audioCtx.resume();return audioCtx}window.ensureAudio=context;window.beep=function(kind){if(!soundEnabled)return;try{var ctx=context();if(!ctx)return;var now=ctx.currentTime;var tones={nav:[523.25,783.99,1046.5],warn:[196,146.83,98],ok:[659.25,987.77,1318.5],tick:[880,1174.66,1760]};var seq=tones[kind]||tones.tick;seq.forEach(function(freq,i){var osc=ctx.createOscillator();var gain=ctx.createGain();osc.type=kind==='warn'?'sawtooth':'triangle';osc.frequency.setValueAtTime(freq,now+i*.035);osc.frequency.exponentialRampToValueAtTime(freq*1.04,now+i*.035+.08);gain.gain.setValueAtTime(.0001,now+i*.035);gain.gain.exponentialRampToValueAtTime(kind==='warn'?.2:.16,now+i*.035+.012);gain.gain.exponentialRampToValueAtTime(.0001,now+i*.035+.16);osc.connect(gain);gain.connect(master||ctx.destination);osc.start(now+i*.035);osc.stop(now+i*.035+.18)});lastSoundAt=Date.now();if(navigator.vibrate)navigator.vibrate(kind==='warn'?[18,20,18]:12)}catch(e){}};function flash(el,ev){if(!el)return;if(typeof ripple==='function')ripple(el,ev);if(typeof acknowledge==='function')acknowledge(el,el.dataset.tone||'tick')}document.addEventListener('click',function(ev){var el=ev.target.closest('button,.sonic,[role=button]');if(!el)return;context();if(Date.now()-lastSoundAt>120)flash(el,ev)},true);document.addEventListener('keydown',function(ev){if(ev.key!=='Enter'&&ev.key!==' ')return;var el=ev.target.closest('button,.sonic,[role=button]');if(!el)return;flash(el,ev)},true);var soundButton=document.getElementById('soundToggle');if(soundButton)soundButton.setAttribute('title','点击开启/关闭 V15 sound-rev-v2 提示音；浏览器或系统静音时仍会显示按钮反馈');})();
+</script></body></html>`;
+}
+
+function buildAll() {
+  ensureStageLedger();
+  const evidence = baseEvidence();
+  const ledger = readLines('reports/v15-intelligence/stage-ledger.ndjson').map((line) => JSON.parse(line));
+  const dataPlatform = buildDataPlatformModel(evidence);
+  const telemetry = buildPlatformTelemetryModel();
+  const devops = buildDevopsOptimizationModel(telemetry);
+  const risks = buildRiskVectors(evidence, ledger, dataPlatform, telemetry, devops);
+  const playbooks = buildPlaybooks(evidence, risks, dataPlatform, telemetry, devops);
+  const scores = calculateScores(evidence, ledger, risks, dataPlatform, telemetry, devops);
+  const autonomous = buildAutonomousOpsModel(evidence, dataPlatform, telemetry, devops, risks, ledger);
+  const softwareCoverage = buildSoftwareCoverageModel(evidence, dataPlatform);
+  const events = buildObservabilityEvents(evidence, ledger, risks, playbooks, scores, dataPlatform, telemetry, devops, autonomous, softwareCoverage);
+  const summary = { '@timestamp': now(), pipeline_version: 'v15', build, job, commit, semver, publicUrl: `https://${publicHost}/`, portalUrl: `http://192.168.1.58:${portalNodePort}/`, inheritedV14Build: evidence.summary?.build || 'unknown', scores, dataPlatform: dataPlatform.summary, telemetry: telemetry.summary, devops: devops.summary, autonomous: autonomous.summary, softwareCoverage: softwareCoverage.summary, riskVectorTotal: risks.length, playbookTotal: playbooks.length, stageLedgerTotal: ledger.length, v14Summary: evidence.summary || {} };
+  write('reports/v15-intelligence/evidence.json', JSON.stringify({ summary, scores, risks, playbooks, ledger, dataPlatform, telemetry, devops, autonomous, softwareCoverage, inherited: evidence }, null, 2) + '\n');
+  write('reports/v15-data-platform-apps.json', JSON.stringify(dataPlatform, null, 2) + '\n');
+  write('reports/v15-data-platform-apps.ndjson', dataPlatform.apps.concat(dataPlatform.flows).map((item) => JSON.stringify({ '@timestamp': now(), pipeline_version: 'v15', build, job, commit, ...item, type: item.source ? 'bigdata_flow_snapshot' : 'bigdata_app_snapshot' })).join('\n') + '\n');
+  write('reports/v15-platform-telemetry.json', JSON.stringify(telemetry, null, 2) + '\n');
+  write('reports/v15-platform-telemetry.ndjson', [telemetry.summary, ...telemetry.nodes, ...telemetry.recentUnhealthyEvents].map((item) => JSON.stringify({ '@timestamp': now(), pipeline_version: 'v15', build, job, commit, ...item, type: item.kubeletVersion ? 'upgrade_node_snapshot' : item.reason ? 'upgrade_event_snapshot' : 'platform_telemetry_snapshot' })).join('\n') + '\n');
+  write('reports/v15-devops-optimization.json', JSON.stringify(devops, null, 2) + '\n');
+  write('reports/v15-devops-optimization.ndjson', [devops.summary, ...devops.nodes, ...devops.candidates, ...devops.actions].map((item) => JSON.stringify({ '@timestamp': now(), pipeline_version: 'v15', build, job, commit, ...item, type: item.node ? 'devops_node_snapshot' : item.pod ? 'devops_candidate_snapshot' : item.key ? 'devops_action_snapshot' : 'devops_summary_snapshot' })).join('\n') + '\n');
+  write('reports/v15-autonomous-ops.json', JSON.stringify(autonomous, null, 2) + '\n');
+  write('reports/v15-autonomous-ops.ndjson', [autonomous.summary, ...autonomous.dimensions, ...autonomous.incidents, ...autonomous.finops, ...autonomous.dataQuality, ...autonomous.controls].map((item) => JSON.stringify({ '@timestamp': now(), pipeline_version: 'v15', build, job, commit, ...item, type: item.scenario ? 'incident_simulation_snapshot' : item.recommendation ? 'finops_capacity_snapshot' : item.rule ? 'data_quality_gate_snapshot' : item.mode ? 'autonomous_control_snapshot' : item.key ? 'autonomous_dimension_snapshot' : 'autonomous_summary_snapshot' })).join('\n') + '\n');
+  write('reports/v15-software-coverage.json', JSON.stringify(softwareCoverage, null, 2) + '\n');
+  write('reports/v15-software-coverage.ndjson', [softwareCoverage.summary, ...softwareCoverage.software, ...softwareCoverage.discovered, ...softwareCoverage.gaps].map((item) => JSON.stringify({ '@timestamp': now(), pipeline_version: 'v15', build, job, commit, ...item, type: item.action ? 'software_coverage_gap_snapshot' : item.resourceKind ? 'software_uncataloged_runtime_snapshot' : item.key ? 'software_component_coverage_snapshot' : 'software_coverage_summary_snapshot' })).join('\n') + '\n');
+  write('reports/v15-risk-score.json', JSON.stringify({ summary, scores, risks: risks.slice(0, 30) }, null, 2) + '\n');
+  write('reports/v15-recovery-playbooks.json', JSON.stringify(playbooks, null, 2) + '\n');
+  write('reports/v15-observability.ndjson', events.map((event) => JSON.stringify(event)).join('\n') + '\n');
+  write('reports/v15-prometheus-metrics.prom', buildMetrics(evidence, risks, playbooks, scores, dataPlatform, telemetry, devops, autonomous, softwareCoverage));
+  write('reports/v15-grafana-dashboard.json', JSON.stringify(buildGrafana(scores, dataPlatform, telemetry, devops, autonomous, softwareCoverage), null, 2) + '\n');
+  write('reports/v15-kibana-dashboard.ndjson', buildKibana().map((object) => JSON.stringify(object)).join('\n') + '\n');
+  write('reports/v15-portal/index.html', buildPortal(evidence, ledger, risks, playbooks, scores, telemetry, devops, autonomous, softwareCoverage));
+  write('reports/v15-portal/evidence.json', JSON.stringify({ summary, scores, risks, playbooks, ledger, dataPlatform, telemetry, devops, autonomous, softwareCoverage }, null, 2) + '\n');
+  console.log(`v15_build_complete events=${events.length} stages=${ledger.length} risks=${risks.length} score=${scores.intelligenceScore} autonomous=${scores.autonomousOpsScore} data_score=${scores.dataPlatformScore} devops_score=${scores.devopsOptimizationScore} software=${scores.softwareCoverageScore}`);
+}
+
+function lintAll() {
+  const required = ['reports/v15-intelligence/evidence.json','reports/v15-data-platform-apps.json','reports/v15-data-platform-apps.ndjson','reports/v15-platform-telemetry.json','reports/v15-platform-telemetry.ndjson','reports/v15-devops-optimization.json','reports/v15-devops-optimization.ndjson','reports/v15-autonomous-ops.json','reports/v15-autonomous-ops.ndjson','reports/v15-software-coverage.json','reports/v15-software-coverage.ndjson','reports/v15-risk-score.json','reports/v15-recovery-playbooks.json','reports/v15-observability.ndjson','reports/v15-prometheus-metrics.prom','reports/v15-grafana-dashboard.json','reports/v15-kibana-dashboard.ndjson','reports/v15-portal/index.html','reports/v15-portal/evidence.json'];
+  for (const file of required) { if (!exists(file)) throw new Error(`missing ${file}`); }
+  const grafana = readJson('reports/v15-grafana-dashboard.json');
+  if (!Array.isArray(grafana.panels) || grafana.panels.length < 16 || grafana.panels.length > 22) throw new Error(`grafana panel count should stay focused and reusable: ${grafana.panels?.length}`);
+  const dashboardText = JSON.stringify(grafana);
+  for (const needle of ['jenkins-v15-autonomous-es', 'state-timeline', 'status-history', 'nodeGraph', 'Big Data App Readiness', 'Big Data Flow State', 'Autonomous Dimension Score', 'Incident Simulation Readiness', 'Data Quality Gate Score', 'Software Coverage', 'Software Component Coverage', 'DevOps Node Pod Distribution']) if (!dashboardText.includes(needle)) throw new Error(`grafana missing ${needle}`);
+  const kibanaLines = readLines('reports/v15-kibana-dashboard.ndjson');
+  if (kibanaLines.length !== 11) throw new Error(`kibana should contain 1 universal data view, 9 visualizations and 1 dashboard, got: ${kibanaLines.length}`);
+  const kibanaObjects = kibanaLines.map((line) => JSON.parse(line));
+  const kibanaText = kibanaLines.join('\n');
+  const kibanaDashboards = kibanaObjects.filter((object) => object.type === 'dashboard');
+  if (kibanaText.includes('deep-lens')) throw new Error('kibana still contains fragmented deep-lens objects');
+  if (kibanaDashboards.length !== 1) throw new Error(`kibana should expose one reusable dashboard: ${kibanaDashboards.length}`);
+  for (const needle of ['zhanglab-platform-pipeline-observability', 'zhanglab-platform-observability-universal-command', 'Universal Observability Command', '通用流水线评分总览', '通用自治运维维度', '通用软件覆盖矩阵', '通用 DevOps 节点分布', '通用 DevOps 优化台账', '通用大数据应用就绪度', '通用大数据链路证据']) if (!kibanaText.includes(needle)) throw new Error(`kibana missing ${needle}`);
+  const html = fs.readFileSync('reports/v15-portal/index.html', 'utf8');
+  for (const needle of ['v15-intelligence-hypergrid-20260601', 'v15-sonic-command-20260601', 'sound-rev-v2', 'Autonomous <span>DataOps Command', 'Software Map', 'Platform Software Coverage Map', 'Software Coverage Gap Queue', 'Autonomous Ops Dimensions', 'Incident Simulation Matrix', 'Data Quality Gates', 'Big Data Application Lab', 'Data Flow Evidence Map', 'DevOps Optimize', 'DevOps Node Pressure', 'Stateless Migration Candidates', 'Risk Radar', 'Recovery Room', 'Command Matrix', 'AudioContext', 'Sound ON', 'pointerdown', 'keydown']) if (!html.includes(needle)) throw new Error(`portal missing ${needle}`);
+  console.log(`v15_lint=ok panels=${grafana.panels.length} kibana_objects=${kibanaLines.length}`);
+}
+
+if (action === 'check') recordCheck(checkKey, checkTitle);
+else if (action === 'build') buildAll();
+else if (action === 'lint') lintAll();
+else throw new Error(`unknown action ${action}`);

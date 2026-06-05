@@ -1,0 +1,863 @@
+def notifyDingTalk(String status, String message) {
+    try {
+        def colorMap = [SUCCESS:'#52C41A', FAILURE:'#FF4D4F', UNSTABLE:'#FAAD14']
+        def color = colorMap.get(status, '#1890FF')
+        def title = "[CI/CD] ${env.APP_NAME ?: 'hello-app'} - ${status}"
+        def text = [
+            "## <font color=\"${color}\">[${status}]</font> ${env.APP_NAME ?: 'hello-app'}",
+            "> **消息**: ${message}",
+            "> **环境**: ${params.DEPLOY_ENV ?: 'N/A'} | **构建**: #${env.BUILD_NUMBER ?: 'N/A'}",
+            "> **提交**: ${env.GIT_COMMIT_ID ?: 'N/A'}",
+            "> **链接**: ${env.BUILD_URL ?: 'N/A'}"
+        ].join("\n")
+        def payload = groovy.json.JsonOutput.toJson([
+            msgtype: 'markdown',
+            markdown: [title: title, text: text],
+            at: [isAtAll: status == 'FAILURE']
+        ])
+        writeFile file: '.dingtalk-payload.json', text: payload
+        sh '''
+            set +e
+            curl -sS -m 8 -H 'Content-Type: application/json' \
+              -X POST \
+              --data-binary @.dingtalk-payload.json \
+              'http://192.168.1.58:18080/dingtalk' \
+              >/tmp/dingtalk-notify.out 2>&1
+            if [ $? -ne 0 ]; then
+              echo "DingTalk webhook notify failed, ignored"
+              cat /tmp/dingtalk-notify.out || true
+            fi
+            rm -f .dingtalk-payload.json
+        '''
+    } catch (e) {
+        echo "⚠️ 钉钉通知异常：${e.message}"
+    }
+}
+
+pipeline {
+    agent any
+
+    triggers {
+        gitlab(
+            triggerOnPush: true,
+            triggerOnMergeRequest: true,
+            branchFilterType: 'NameBasedFilter',
+            includeBranchesSpec: 'main'
+        )
+    }
+
+    options {
+        timestamps()
+        ansiColor('xterm')
+        disableConcurrentBuilds()
+        skipDefaultCheckout(true)
+        timeout(time: 120, unit: 'MINUTES')
+        buildDiscarder(logRotator(numToKeepStr: '30', artifactNumToKeepStr: '20'))
+        
+    }
+
+    parameters {
+        choice(name: 'PIPELINE_VERSION', choices: ['Jenkinsfile-expert-v9', 'Jenkinsfile-v8-jkvideo', 'Jenkinsfile-expert-v8', 'Jenkinsfile-expert-v7', 'Jenkinsfile-expert-v6', 'Jenkinsfile-expert-v5', 'Jenkinsfile-expert-v4', 'Jenkinsfile-expert-v3', 'Jenkinsfile-expert-v2', 'Jenkinsfile'], description: '选择要运行的 Jenkinsfile 版本，按大版本到低版本排列。')
+        choice(name: 'DEPLOY_ENV',       choices: ['dev', 'test', 'prod'], description: '选择部署环境')
+        booleanParam(name: 'SKIP_SECURITY_SCAN', defaultValue: false,  description: '跳过 Sonar/Trivy 安全扫描')
+        booleanParam(name: 'RUN_UNIT_TESTS',     defaultValue: true,   description: '执行单元测试')
+        booleanParam(name: 'RUN_SMOKE_TEST',     defaultValue: true,   description: '执行部署后烟雾测试')
+        booleanParam(name: 'DRY_RUN',            defaultValue: false,  description: '仅做构建与校验，不执行发布')
+        choice(name: 'FLINK_RUN_MODE',   choices: ['run', 'skip'],    description: '是否执行 Flink 任务发布')
+        string(name: 'K8S_NAMESPACE',    defaultValue: 'ns-apps',     description: '应用部署后的命名空间')
+        string(name: 'APP_HEALTH_URL',   defaultValue: 'http://hello-app.ns-apps.svc.cluster.local/', description: '部署后健康检查地址')
+
+        // ── 新增：JKVideo 构建开关 ─────────────────────────────
+        booleanParam(name: 'BUILD_JKVIDEO', defaultValue: true, description: '是否同时构建 JKVideo RN 项目')
+        string(name: 'JKVIDEO_REPO_URL', defaultValue: 'http://gitlab-service/root/JKVideo.git', description: 'JKVideo GitLab 仓库地址')
+        string(name: 'JKVIDEO_BRANCH', defaultValue: 'main', description: 'JKVideo 分支名')
+        choice(name: 'JKVIDEO_PLATFORMS', choices: ['web', 'android+web', 'android'], description: 'JKVideo 构建目标平台')
+        booleanParam(name: 'JKVIDEO_RUN_JEST', defaultValue: true, description: 'JKVideo 是否执行 Jest 测试')
+    }
+
+    environment {
+        // ── 原有环境变量（保持不变）─────────────────────────────
+        SCRIPT_NAME     = "Jenkinsfile-expert-v8-jkvideo"
+        APP_NAME        = "hello-app"
+        REGISTRY        = "127.0.0.1:30050"
+        CONFIG_REPO_URL = "http://gitlab-service/root/hello-app-config.git"
+
+        TRIVY_VER       = "0.68.2"
+        MAVEN_IMAGE     = "maven:3-eclipse-temurin-17"
+        SONAR_URL       = "http://127.0.0.1:30085"
+        SONAR_TOKEN     = credentials('sonar-token')
+        TRIVY_DB_REPO   = "127.0.0.1:30050/aquasecurity/trivy-db:2"
+
+        GITOPS_CREDENTIALS = "gitlab-root-auth"
+
+        KAFKA_NS        = "ns-bigdata"
+        KAFKA_SERVICE   = "kafka.ns-bigdata.svc.cluster.local"
+        KAFKA_PORT      = "9092"
+        ES_URL          = "http://elasticsearch.default.svc.cluster.local:9200"
+        FLINK_URL       = "http://flink-jobmanager.ns-bigdata.svc.cluster.local:8081"
+
+        MAVEN_CACHE     = "/root/.m2"
+
+        // ── 新增：JKVideo 相关环境变量 ───────────────────────────
+        JKVIDEO_APP_NAME  = "jkvideo"
+        JKVIDEO_WORKSPACE = "${WORKSPACE}/jkvideo-src"       // JKVideo 单独的工作目录，与主项目隔离
+        NODE_CACHE        = "/root/.npm"                     // npm 全局缓存，挂载进容器加速
+        ANDROID_BUILDER_IMAGE = "127.0.0.1:30050/jkvideo/android-builder:arm64"  // 见 docker/Dockerfile.android
+    }
+
+    stages {
+
+        stage('清理环境') {
+            steps {
+                deleteDir()
+            }
+        }
+
+        stage('0. 初始化上下文') {
+            steps {
+                checkout scm
+                script {
+                    env.GIT_COMMIT_ID   = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
+                    env.GIT_BRANCH_NAME = sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim()
+                    env.IMAGE_NAME      = "${env.REGISTRY}/${env.APP_NAME}:${env.GIT_COMMIT_ID}"
+                    env.DEPLOY_ENV      = params.DEPLOY_ENV
+                    env.DRY_RUN         = params.DRY_RUN.toString()
+                    env.BUILD_JKVIDEO   = params.BUILD_JKVIDEO.toString()
+                    env.JKVIDEO_BRANCH  = params.JKVIDEO_BRANCH
+                    env.JKVIDEO_PLATFORMS = params.JKVIDEO_PLATFORMS
+                    env.JKVIDEO_RUN_JEST = params.JKVIDEO_RUN_JEST.toString()
+                    env.APP_HEALTH_URL  = params.APP_HEALTH_URL
+
+                    // JKVideo Web 镜像名（用于后续 K8s 部署 Web 端）
+                    env.JKVIDEO_WEB_IMAGE = "${env.REGISTRY}/${env.JKVIDEO_APP_NAME}-web:${env.GIT_COMMIT_ID}"
+
+                    currentBuild.displayName = "#${env.BUILD_NUMBER} ${params.DEPLOY_ENV} ${env.GIT_COMMIT_ID}"
+                    currentBuild.description = "branch=${env.GIT_BRANCH_NAME}, image=${env.IMAGE_NAME}, jkvideo=${params.BUILD_JKVIDEO}"
+
+                    sh '''#!/bin/sh
+set -eux
+mkdir -p meta reports
+cat > meta/build-info.json <<EOF
+{
+  "build_number": "${BUILD_NUMBER}",
+  "deploy_env": "${DEPLOY_ENV}",
+  "git_commit": "${GIT_COMMIT_ID}",
+  "git_branch": "${GIT_BRANCH_NAME}",
+  "image_name": "${IMAGE_NAME}",
+  "jkvideo_web_image": "${JKVIDEO_WEB_IMAGE}",
+  "jkvideo_enabled": "${BUILD_JKVIDEO}",
+  "dry_run": "${DRY_RUN}",
+  "build_url": "${BUILD_URL}"
+}
+EOF
+'''
+                    stash name: 'workspace-src', includes: '**/*', excludes: '.git/**, target/**, config-repo/**', useDefaultExcludes: false
+                }
+            }
+        }
+
+        stage('1. 执行前预检') {
+            steps {
+                unstash 'workspace-src'
+                script {
+                    sh '''
+                        set -eux
+                        test -f Dockerfile
+                        docker version
+                        kubectl version --client
+                        git --version
+                    '''
+                }
+            }
+        }
+
+        // ── 新增：拉取 JKVideo 源码（与主项目并行，互不干扰）──────
+        stage('1.5 拉取 JKVideo 源码') {
+            when {
+                expression { return params.BUILD_JKVIDEO }
+            }
+            steps {
+                script {
+                    echo "BUILD_JKVIDEO=${params.BUILD_JKVIDEO}"
+                    echo "JKVIDEO_REPO_URL=${params.JKVIDEO_REPO_URL}"
+                    echo "JKVIDEO_BRANCH=${params.JKVIDEO_BRANCH}"
+
+                    sh "mkdir -p ${env.JKVIDEO_WORKSPACE}"
+                    dir(env.JKVIDEO_WORKSPACE) {
+                        checkout([
+                            $class: 'GitSCM',
+                            branches: [[name: "*/${params.JKVIDEO_BRANCH}"]],
+                            userRemoteConfigs: [[
+                                url: params.JKVIDEO_REPO_URL,
+                                credentialsId: env.GITOPS_CREDENTIALS
+                            ]]
+                        ])
+                    }
+                    stash name: 'jkvideo-src', includes: 'jkvideo-src/**/*', excludes: 'jkvideo-src/.git/**'
+                }
+            }
+        }
+
+        stage('2. 并行质量关卡') {
+            parallel {
+
+                // ── 原有：源码脱敏（主项目）─────────────────────────
+                stage('2.1 源码脱敏审计 (Trivy FS)') {
+                    when {
+                        expression { return !params.SKIP_SECURITY_SCAN }
+                    }
+                    steps {
+                        unstash 'workspace-src'
+                        sh '''
+                            set -eux
+                            docker rm -f temp-trivy-fs || true
+                            docker run -d --name temp-trivy-fs --entrypoint /bin/sh -w /work aquasec/trivy:${TRIVY_VER} -c 'sleep 3600'
+                            docker cp . temp-trivy-fs:/work
+                            mkdir -p reports
+                            docker exec temp-trivy-fs trivy fs /work --scanners secret --format table | tee reports/trivy-fs.txt
+                            docker rm -f temp-trivy-fs
+                        '''
+                    }
+                }
+
+                // ── 原有：SonarQube（主项目）────────────────────────
+                stage('2.2 源码质量审计 (SonarQube)') {
+                    when {
+                        expression { return !params.SKIP_SECURITY_SCAN }
+                    }
+                    steps {
+                        unstash 'workspace-src'
+                        sh '''
+                            set -eux
+                            if [ -f "pom.xml" ]; then
+                              docker rm -f temp-sonar-scan || true
+                              docker run -d --name temp-sonar-scan --network host --add-host repo.maven.apache.org:104.18.18.12 --add-host repo1.maven.org:104.18.18.12 -v ${MAVEN_CACHE}:/root/.m2 -w /usr/src ${MAVEN_IMAGE} sleep 3600
+                              docker cp . temp-sonar-scan:/usr/src/
+                              docker exec temp-sonar-scan mvn -B -o compile sonar:sonar \
+                                -Dsonar.host.url=${SONAR_URL} \
+                                -Dsonar.token=${SONAR_TOKEN} \
+                                -Dsonar.projectKey=${APP_NAME} \
+                                -Dsonar.sources=. \
+                                -Dsonar.exclusions=/*.js,/*.html
+                              docker rm -f temp-sonar-scan
+                            else
+                              echo "⚠️ 未检测到 pom.xml，跳过 SonarQube"
+                            fi
+                        '''
+                    }
+                }
+
+                // ── 原有：JUnit 测试（主项目）───────────────────────
+                stage('2.3 单元测试 (JUnit)') {
+                    when {
+                        expression { return params.RUN_UNIT_TESTS }
+                    }
+                    steps {
+                        unstash 'workspace-src'
+                        sh '''
+                            set -eux
+                            if [ -f "pom.xml" ]; then
+                              docker rm -f temp-maven-test || true
+                              docker run -d --name temp-maven-test --network host --add-host repo.maven.apache.org:104.18.18.12 --add-host repo1.maven.org:104.18.18.12 -v ${MAVEN_CACHE}:/root/.m2 -w /usr/src ${MAVEN_IMAGE} sleep 3600
+                              docker cp . temp-maven-test:/usr/src/
+                              docker exec temp-maven-test mvn -B -o test
+                              mkdir -p target
+                              docker cp temp-maven-test:/usr/src/target target || true
+                              docker rm -f temp-maven-test
+                            else
+                              echo "⚠️ 未检测到 pom.xml，跳过单元测试"
+                            fi
+                        '''
+                    }
+                    post {
+                        always {
+                            junit allowEmptyResults: true, testResults: 'target/**/surefire-reports/*.xml'
+                        }
+                    }
+                }
+
+                // ── 新增：JKVideo Jest 测试（与主项目并行）──────────
+                stage('2.4 JKVideo Jest 单元测试') {
+                    when {
+                        allOf {
+                            expression { return params.BUILD_JKVIDEO }
+                            expression { return params.JKVIDEO_RUN_JEST }
+                        }
+                    }
+                    steps {
+                        unstash 'jkvideo-src'
+                        sh '''
+                            set -eux
+                            docker rm -f temp-jkvideo-jest || true
+                            docker run -d --name temp-jkvideo-jest \
+                            -v ${NODE_CACHE}:/root/.npm \
+                            -w /app \
+                            node:20-alpine sleep 3600
+
+                            docker cp ${JKVIDEO_WORKSPACE}/. temp-jkvideo-jest:/app/
+
+                            echo "▶ 安装依赖..."
+                            docker exec temp-jkvideo-jest npm ci --prefer-offline --cache /root/.npm
+
+                            echo "▶ TypeScript 类型检查..."
+                            docker exec temp-jkvideo-jest npx tsc --noEmit 
+
+                            echo "▶ 运行 Jest 测试..."
+                            docker exec temp-jkvideo-jest npm test -- \
+                                --config jest.config.js \
+                                --coverage --ci --passWithNoTests --forceExit \
+                                --reporters=default \
+                                --reporters=jest-junit
+
+                            mkdir -p reports/jkvideo-jest
+                            docker cp temp-jkvideo-jest:/app/coverage/junit.xml            reports/jkvideo-jest/ || true
+                            docker cp temp-jkvideo-jest:/app/coverage/lcov.info            reports/jkvideo-jest/ || true
+                            docker cp temp-jkvideo-jest:/app/coverage/cobertura-coverage.xml reports/jkvideo-jest/ || true
+
+                            docker rm -f temp-jkvideo-jest
+                        '''
+                    }
+                    post {
+                        always {
+                            junit allowEmptyResults: true, testResults: 'reports/jkvideo-jest/junit.xml'
+                        }
+                    }
+                }
+            } // end parallel
+        }
+
+        stage('3. 产物构建 (Maven Build)') {
+            steps {
+                unstash 'workspace-src'
+                sh '''
+                    set -eux
+                    if [ -f "pom.xml" ]; then
+                      docker rm -f temp-maven-build || true
+                      docker run -d --name temp-maven-build --network host --add-host repo.maven.apache.org:104.18.18.12 --add-host repo1.maven.org:104.18.18.12 -v ${MAVEN_CACHE}:/root/.m2 -w /usr/src ${MAVEN_IMAGE} sleep 3600
+                      docker cp . temp-maven-build:/usr/src/
+                      docker exec temp-maven-build mvn -B -o clean package -DskipTests
+                      rm -rf target
+                      docker cp temp-maven-build:/usr/src/target .
+                      docker rm -f temp-maven-build
+                    else
+                      echo "⚠️ 未检测到 pom.xml，跳过 Maven 打包"
+                    fi
+                '''
+            }
+        }
+
+        // ── 新增：JKVideo 全平台构建（与主项目串行，避免资源抢占）
+        stage('3.5 JKVideo 全平台构建') {
+            when {
+                expression { return params.BUILD_JKVIDEO }
+            }
+            failFast  false 
+            parallel {
+
+                // ── Android APK ──────────────────────────────────
+                stage('JKVideo Android') {
+                    when {
+                        expression {
+                            return false
+                            // return params.JKVIDEO_PLATFORMS == 'android' ||
+                             //   params.JKVIDEO_PLATFORMS == 'android+web'
+                        }
+                    }
+                    steps {
+                        catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
+                            unstash 'jkvideo-src'
+                            sh '''
+                                set -eux
+                                docker rm -f temp-jkvideo-android || true
+                                docker run -d --name temp-jkvideo-android \
+                                -v ${NODE_CACHE}:/root/.npm \
+                                -v /root/.gradle:/root/.gradle \
+                                -w /app \
+                                ${ANDROID_BUILDER_IMAGE} sleep 3600
+
+                                docker cp ${JKVIDEO_WORKSPACE}/. temp-jkvideo-android:/app/
+
+                                echo "▶ 安装 Node 依赖..."
+                                docker exec temp-jkvideo-android npm ci --prefer-offline --cache /root/.npm
+
+                                echo "▶ Expo Prebuild..."
+                                docker exec temp-jkvideo-android npx expo prebuild \
+                                --platform android --clean --no-install
+
+                                echo "▶ Gradle 构建 Release APK..."
+                                docker exec temp-jkvideo-android bash -c \
+                                "cd android && chmod +x gradlew && ./gradlew assembleRelease -q"
+
+                                mkdir -p reports/jkvideo-android
+                                docker cp temp-jkvideo-android:/app/android/app/build/outputs/apk/release/. \
+                                reports/jkvideo-android/ || true
+
+                                docker rm -f temp-jkvideo-android
+                            '''
+                        }  // catchError 闭合
+                    }  // steps 闭合
+                    post {
+                        success {
+                            archiveArtifacts artifacts: 'reports/jkvideo-android/*.apk',
+                                            fingerprint: true,
+                                            allowEmptyArchive: true
+                            echo "✅ JKVideo Android APK 构建成功"
+                        }
+                        failure { echo "⚠️ Android 构建失败，已标记 UNSTABLE" }
+                    }
+                }  // stage 闭合
+
+                // ── Web ──────────────────────────────────────────
+                stage('JKVideo Web') {
+                    when {
+                        expression {
+                            return params.JKVIDEO_PLATFORMS == 'web' ||
+                                params.JKVIDEO_PLATFORMS == 'android+web'
+                        }
+                    }
+                    steps {
+                        unstash 'jkvideo-src'
+                        timeout(time: 20, unit: 'MINUTES') {
+                            sh '''
+                                set -eux
+                                docker rm -f temp-jkvideo-web || true
+                                docker run -d --name temp-jkvideo-web \
+                                -v ${NODE_CACHE}:/root/.npm \
+                                -w /app \
+                                node:20-alpine sleep 3600
+
+                                docker cp ${JKVIDEO_WORKSPACE}/. temp-jkvideo-web:/app/
+
+                                echo "▶ 安装依赖..."
+                                docker exec temp-jkvideo-web npm ci --prefer-offline --cache /root/.npm
+
+                                echo "▶ Expo Web 导出..."
+                                docker exec temp-jkvideo-web sh -c \
+                                'npx expo export --platform web --output-dir dist/web 2>&1' | cat
+
+                                mkdir -p reports/jkvideo-web
+                                docker cp temp-jkvideo-web:/app/dist/web/. reports/jkvideo-web/
+                                tar -czf reports/jkvideo-web.tar.gz -C reports/jkvideo-web .
+
+                                docker rm -f temp-jkvideo-web || true
+                            '''
+                        }
+                    }
+                    post {
+                        always {
+                            sh 'docker rm -f temp-jkvideo-web || true'
+                        }
+                        success {
+                            archiveArtifacts artifacts: 'reports/jkvideo-web.tar.gz',
+                                            fingerprint: true,
+                                            allowEmptyArchive: true
+                            echo "✅ JKVideo Web 构建成功"
+                        }
+                    }
+                }
+
+            } // end JKVideo parallel
+        }
+
+        stage('4. 产物校验与摘要') {
+            steps {
+                script {
+                    sh '''
+                        set -eux
+                        mkdir -p meta
+                        if ls target/*.jar >/dev/null 2>&1; then
+                          sha256sum target/*.jar | tee meta/artifact.sha256
+                          ls -lah target/*.jar | tee meta/artifact.list
+                        else
+                          echo "no-jar-found" | tee meta/artifact.list
+                        fi
+
+                        # JKVideo 产物摘要（存在则记录）
+                        if ls reports/jkvideo-android/*.apk >/dev/null 2>&1; then
+                          sha256sum reports/jkvideo-android/*.apk | tee meta/jkvideo-android.sha256
+                        fi
+                        if [ -f reports/jkvideo-web.tar.gz ]; then
+                          sha256sum reports/jkvideo-web.tar.gz | tee meta/jkvideo-web.sha256
+                        fi
+                    '''
+                }
+            }
+        }
+
+        stage('5. 业务镜像入库 (Docker Push)') {
+            steps {
+                sh '''
+                    set -eux
+                    # 主项目镜像
+                    docker build --network none --no-cache \
+                      --label app.name=${APP_NAME} \
+                      --label git.commit=${GIT_COMMIT_ID} \
+                      --label git.branch=${GIT_BRANCH_NAME} \
+                      --label build.number=${BUILD_NUMBER} \
+                      -t ${IMAGE_NAME} .
+                    if [ "${DRY_RUN}" = "false" ]; then
+                      docker push ${IMAGE_NAME}
+                    else
+                      echo "DRY_RUN=true，跳过 docker push"
+                    fi
+                '''
+            }
+        }
+
+        // ── 新增：JKVideo Web 镜像打包推送（复用你的 Registry）──
+        stage('5.5 JKVideo Web 镜像入库') {
+            when {
+                allOf {
+                    expression { return params.BUILD_JKVIDEO }
+                    expression {
+                        return params.JKVIDEO_PLATFORMS == 'web' ||
+                            params.JKVIDEO_PLATFORMS == 'android+web'
+                    }
+                }
+            }
+            steps {
+                sh '''
+                    set -eux
+
+                    # nginx 配置写入临时目录
+                    cat > /tmp/nginx-jkvideo.conf <<'NGINXCONF'
+server {
+    listen 80;
+    root /usr/share/nginx/html;
+    index index.html;
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+    location ~* [.](js|css|png|ttf|woff2|ico)$ {
+        expires 7d;
+        add_header Cache-Control "public";
+    }
+    gzip on;
+    gzip_types text/plain text/css application/javascript application/json;
+}
+NGINXCONF
+
+                    # 准备独立构建目录，避免污染工作区
+                    rm -rf /tmp/jkvideo-web-build
+                    mkdir -p /tmp/jkvideo-web-build/html /tmp/jkvideo-web-build/apks
+
+                    # 把 web 产物和 nginx 配置放进构建目录
+                    cp -r reports/jkvideo-web/. /tmp/jkvideo-web-build/html/
+                    cp /tmp/nginx-jkvideo.conf /tmp/jkvideo-web-build/nginx.conf
+                    cp docker/apks/alpine-3.23-aarch64/*.apk /tmp/jkvideo-web-build/apks/
+
+                    # 写 Dockerfile 到构建目录
+                    cat > /tmp/jkvideo-web-build/Dockerfile <<'DOCKERFILE'
+FROM 127.0.0.1:30050/library/nginx-alpine:latest
+COPY apks/*.apk /tmp/apks/
+RUN apk add --no-network --allow-untrusted /tmp/apks/*.apk && rm -rf /tmp/apks
+RUN rm /etc/nginx/conf.d/default.conf
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY html/ /usr/share/nginx/html/
+EXPOSE 80
+DOCKERFILE
+
+                    docker build --network none --no-cache \
+                    --label app.name=${JKVIDEO_APP_NAME}-web \
+                    --label git.commit=${GIT_COMMIT_ID} \
+                    -t ${JKVIDEO_WEB_IMAGE} \
+                    /tmp/jkvideo-web-build
+
+                    rm -rf /tmp/jkvideo-web-build
+
+                    if [ "${DRY_RUN}" = "false" ]; then
+                        docker push ${JKVIDEO_WEB_IMAGE}
+                        echo "✅ 镜像已推送: ${JKVIDEO_WEB_IMAGE}"
+                    else
+                        echo "DRY_RUN=true，跳过 push"
+                    fi
+                '''
+            }
+            post {
+                success {
+                    echo "✅ JKVideo Web 镜像推送成功: ${JKVIDEO_WEB_IMAGE}"
+                }
+                always {
+                    sh 'docker rmi ${JKVIDEO_WEB_IMAGE} 2>/dev/null || true'
+                }
+            }
+        }
+        stage('6. 质量红线卡点 (Trivy Image)') {
+            when {
+                expression { return !params.SKIP_SECURITY_SCAN }
+            }
+            steps {
+                sh '''
+                    set -eux
+                    docker run --rm --network host \
+                      -v /var/run/docker.sock:/var/run/docker.sock \
+                      aquasec/trivy:${TRIVY_VER} image \
+                      --db-repository ${TRIVY_DB_REPO} \
+                      --exit-code 1 \
+                      --severity CRITICAL,HIGH \
+                      ${IMAGE_NAME}
+                '''
+            }
+        }
+
+        stage('7. 基建健康度巡检 (Kafka / ES / Registry / Flink)') {
+            steps {
+                sh '''
+                    set -eux
+                    mkdir -p reports
+
+                    echo "👉 检查 Elasticsearch: ${ES_URL}"
+                    curl -fsS --max-time 10 "${ES_URL}/_cluster/health" | tee reports/elasticsearch-health.json
+                    grep -Eq '"status":"(green|yellow)"' reports/elasticsearch-health.json
+
+                    echo "👉 检查 Kafka: ${KAFKA_SERVICE}:${KAFKA_PORT}"
+                    timeout 5 bash -lc "cat < /dev/null > /dev/tcp/${KAFKA_SERVICE}/${KAFKA_PORT}"
+
+                    echo "👉 检查 Registry: ${REGISTRY}"
+                    curl -fsS --max-time 10 "http://local-registry.ns-devops.svc.cluster.local:5000/v2/" | tee reports/registry-v2.json
+
+                    echo "👉 检查 Grafana / Prometheus / Kibana / Flink / Kafka UI"
+                    curl -fsS --max-time 10 "http://kube-stack-grafana.monitoring.svc.cluster.local/api/health" | tee reports/grafana-health.json
+                    curl -fsS --max-time 10 "http://kube-stack-kube-prometheus-prometheus.monitoring.svc.cluster.local:9090/-/ready" | tee reports/prometheus-ready.txt
+                    curl -fsS --max-time 10 "http://kibana-service.default.svc.cluster.local:5601/api/status" | tee reports/kibana-status.json
+                    curl -fsS --max-time 10 "${FLINK_URL}/overview" | tee reports/flink-overview.json
+                    curl -fsS --max-time 10 "http://kafka-ui.ns-bigdata.svc.cluster.local:8080/" >/dev/null
+                '''
+            }
+        }
+
+        stage('8. Flink 流水线任务发布') {
+            when {
+                allOf {
+                    expression { return params.FLINK_RUN_MODE == 'run' }
+                    expression { return !params.DRY_RUN }
+                }
+            }
+            steps {
+                script {
+                    def jarFile = sh(
+                        script: "ls target/*-shaded.jar target/flink-kafka-demo-1.0-SNAPSHOT.jar 2>/dev/null | head -n 1",
+                        returnStdout: true
+                    ).trim()
+
+                    if (!jarFile) {
+                        echo "⚠️ 未发现 Flink 可执行 Jar，跳过 Flink 发布"
+                    } else {
+                        env.FLINK_JAR_FILE = jarFile
+                        sh """
+                            set -eux
+                            mkdir -p meta
+                            curl -s -X POST -F "jarfile=@${jarFile}" "${FLINK_URL}/jars/upload" > meta/flink-upload.json
+
+                            JAR_ID=\$(cat meta/flink-upload.json | grep -o 'flink-web-upload/[^"]*.jar' | cut -d '/' -f 2)
+                            if [ -z "\$JAR_ID" ]; then
+                              echo "❌ 未能解析 Flink Jar ID"
+                              cat meta/flink-upload.json
+                              exit 1
+                            fi
+
+                            curl -s -X POST "${FLINK_URL}/jars/\${JAR_ID}/run" > meta/flink-run.json
+                        """
+                    }
+                }
+            }
+        }
+
+        stage('9. GitOps 多环境分发') {
+                when {
+                    expression { return !params.DRY_RUN }
+                }
+                steps {
+                    dir('config-repo') {
+                        checkout([
+                            $class: 'GitSCM',
+                            branches: [[name: 'main']],
+                            userRemoteConfigs: [[url: "${CONFIG_REPO_URL}", credentialsId: "${GITOPS_CREDENTIALS}"]]
+                        ])
+
+                        script {
+                            def manifestPath = "${params.DEPLOY_ENV}/deployment.yaml"
+
+                            sh """
+                                set -eux
+                                test -f ${manifestPath}
+                                sed -i 's|image: .*|image: ${IMAGE_NAME}|g' ${manifestPath}
+                                grep -n 'image:' ${manifestPath}
+                                git config user.email 'jenkins@devops.local'
+                                git config user.name 'jenkins-bot'
+                                git add ${manifestPath}
+                                git diff --cached --quiet || git commit -m "ci(v8): deploy ${APP_NAME} ${GIT_COMMIT_ID} to ${DEPLOY_ENV}"
+                            """
+
+                        // JKVideo Web GitOps
+                        if (params.BUILD_JKVIDEO &&
+                            (params.JKVIDEO_PLATFORMS == 'web' || params.JKVIDEO_PLATFORMS == 'android+web')) {
+
+                            def jkvideoManifest = "${params.DEPLOY_ENV}/jkvideo-web-deployment.yaml"
+
+                            sh """
+                                set -eux
+                                test -f ${jkvideoManifest}
+                                sed -i '/name: jkvideo-web/{n; s|image: .*|image: ${JKVIDEO_WEB_IMAGE}|}' ${jkvideoManifest}
+                                grep -q 'nodePort: 30088' ${jkvideoManifest}
+                                test -f ${params.DEPLOY_ENV}/kustomization.yaml
+                                grep -qxF -- '- jkvideo-web-deployment.yaml' ${params.DEPLOY_ENV}/kustomization.yaml || \\
+                                  printf '\\n- jkvideo-web-deployment.yaml\\n' >> ${params.DEPLOY_ENV}/kustomization.yaml
+                                grep -n 'image:\\|type:\\|nodePort:' ${jkvideoManifest}
+                                git add ${jkvideoManifest} ${params.DEPLOY_ENV}/kustomization.yaml
+                                git diff --cached --quiet || git commit -m "ci(v8): deploy jkvideo-web ${GIT_COMMIT_ID} to ${params.DEPLOY_ENV}"
+                            """
+                        }
+
+
+                        withCredentials([usernamePassword(
+                            credentialsId: "${GITOPS_CREDENTIALS}",
+                            usernameVariable: 'GIT_USERNAME',
+                            passwordVariable: 'GIT_PASSWORD'
+                        )]) {
+                            sh '''
+                                set -eux
+                                git push http://${GIT_USERNAME}:${GIT_PASSWORD}@gitlab-service/root/hello-app-config.git HEAD:main
+                                echo "✅ GitOps 配置已推送"
+                                kubectl -n argocd annotate application hello-app-${DEPLOY_ENV} \
+                                  argocd.argoproj.io/refresh=hard --overwrite || true
+                            '''
+                        }
+                    }
+                }
+            }
+        }
+        stage('10. 发布闸门 (test/prod)') {
+            when {
+                allOf {
+                    expression { return !params.DRY_RUN }
+                    anyOf {
+                        expression { return params.DEPLOY_ENV == 'test' }
+                        expression { return params.DEPLOY_ENV == 'prod' }
+                    }
+                }
+            }
+            steps {
+                timeout(time: 10, unit: 'MINUTES') {
+                    input message: "确认继续发布到 ${params.DEPLOY_ENV} ?", ok: "确认发布"
+                }
+            }
+        }
+
+        stage('11. 部署后验证 (Rollout + Smoke Test)') {
+            steps {
+                script {
+                    sh '''
+                    set -eux
+                    kubectl -n argocd annotate application hello-app-${DEPLOY_ENV} \
+                      argocd.argoproj.io/refresh=hard --overwrite || true
+
+                    CURRENT_IMAGE=""
+                    for i in $(seq 1 36); do
+                      CURRENT_IMAGE=$(kubectl get deployment/hello-app -n ns-apps -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null || true)
+                      if [ "$CURRENT_IMAGE" = "$IMAGE_NAME" ]; then
+                        break
+                      fi
+                      echo "等待 ArgoCD 应用镜像 ${IMAGE_NAME}，当前: ${CURRENT_IMAGE:-missing}"
+                      sleep 5
+                    done
+                    if [ "$CURRENT_IMAGE" != "$IMAGE_NAME" ]; then
+                      echo "❌ hello-app 实际部署镜像不匹配，期望 ${IMAGE_NAME}，当前 ${CURRENT_IMAGE:-missing}"
+                      exit 1
+                    fi
+
+                    echo "👉 等待主应用 Deployment Rollout"
+                    kubectl rollout status deployment/hello-app -n ns-apps --timeout=180s
+                    kubectl wait --for=condition=Ready pod -n ns-apps -l app=hello-app --timeout=120s
+
+                    curl -fsS "${APP_HEALTH_URL}" > /dev/null
+                    echo "✅ 主应用健康检查通过"
+                    '''
+
+                    // JKVideo Web 健康检查（如果部署了）
+                    if (params.BUILD_JKVIDEO &&
+                        (params.JKVIDEO_PLATFORMS == 'web' || params.JKVIDEO_PLATFORMS == 'android+web')) {
+                        sh '''
+                            set -eux
+                            echo "👉 等待 JKVideo Web Rollout"
+                            JK_IMAGE=""
+                            for i in $(seq 1 36); do
+                              JK_IMAGE=$(kubectl get deployment/jkvideo-web -n ns-apps -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null || true)
+                              if [ "$JK_IMAGE" = "$JKVIDEO_WEB_IMAGE" ]; then
+                                break
+                              fi
+                              echo "等待 ArgoCD 应用 JKVideo Web 镜像 ${JKVIDEO_WEB_IMAGE}，当前: ${JK_IMAGE:-missing}"
+                              sleep 5
+                            done
+                            if [ "$JK_IMAGE" != "$JKVIDEO_WEB_IMAGE" ]; then
+                              echo "❌ jkvideo-web 实际部署镜像不匹配，期望 ${JKVIDEO_WEB_IMAGE}，当前 ${JK_IMAGE:-missing}"
+                              exit 1
+                            fi
+
+                            kubectl rollout status deployment/jkvideo-web -n ns-apps --timeout=180s
+                            kubectl wait --for=condition=Ready pod -n ns-apps -l app=jkvideo-web --timeout=120s
+
+                            curl -fsS http://jkvideo-web.ns-apps.svc.cluster.local/ > /dev/null
+                            echo "✅ JKVideo Web 健康检查通过"
+                            JK_NODEPORT=$(kubectl get svc jkvideo-web -n ns-apps -o jsonpath='{.spec.ports[0].nodePort}' 2>/dev/null || true)
+                            if [ -n "$JK_NODEPORT" ]; then
+                              curl -fsS "http://192.168.1.58:${JK_NODEPORT}/" > /dev/null
+                              echo "✅ JKVideo Web NodePort 可达: http://192.168.1.58:${JK_NODEPORT}/"
+                            fi
+                        '''
+                    }
+                }
+            }
+        }
+
+        stage('12. 构建总结') {
+            steps {
+                script {
+                    sh '''#!/bin/sh
+cat > meta/build-summary.txt <<EOF
+Build Number      : ${BUILD_NUMBER}
+Deploy Env        : ${DEPLOY_ENV}
+Git Branch        : ${GIT_BRANCH_NAME}
+Git Commit        : ${GIT_COMMIT_ID}
+Main Image        : ${IMAGE_NAME}
+JKVideo Enable    : ${BUILD_JKVIDEO}
+JKVideo Web       : ${JKVIDEO_WEB_IMAGE}
+JKVideo Platforms : ${JKVIDEO_PLATFORMS}
+JKVideo URL       : http://192.168.1.58:30088/
+Dry Run           : ${DRY_RUN}
+Flink Mode        : ${FLINK_RUN_MODE}
+EOF
+'''
+                    echo "✅ V8+JKVideo 流水线执行完成"
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            archiveArtifacts allowEmptyArchive: true,
+                artifacts: 'target/*.jar,meta/*,reports/*,reports/jkvideo-android/*.apk,reports/jkvideo-web.tar.gz',
+                fingerprint: true
+            script { notifyDingTalk('SUCCESS', "V8+JKVideo 流水线执行成功") }
+            echo "🎉 V8+JKVideo 流水线闭环执行成功"
+        }
+        unstable {
+            archiveArtifacts allowEmptyArchive: true,
+                artifacts: 'target/*.jar,meta/*,reports/*',
+                fingerprint: true
+            script { notifyDingTalk('UNSTABLE', "V8+JKVideo 流水线结果为 UNSTABLE，请检查测试/扫描报告") }
+            echo "⚠️ 构建结果为 UNSTABLE，请检查测试/扫描结果"
+        }
+        failure {
+            archiveArtifacts allowEmptyArchive: true,
+                artifacts: 'target/*.jar,meta/*,reports/*',
+                fingerprint: true
+            script { notifyDingTalk('FAILURE', "V8+JKVideo 流水线执行失败，请检查 Jenkins 日志和 Kibana/Grafana 面板") }
+            echo "❌ 流水线执行失败，请根据阶段日志回溯"
+        }
+        cleanup {
+            cleanWs(deleteDirs: true, disableDeferredWipeout: true, notFailBuild: true)
+        }
+    }
+}

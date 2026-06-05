@@ -1,0 +1,1126 @@
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║  Jenkinsfile-expert-v9  (Refactored: helpers in jenkins-v9-helpers.groovy)║
+// ║  解决 MethodTooLargeException：辅助函数移入独立文件，单独 CPS 编译         ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+
+import groovy.json.JsonOutput   // Stage 0 build-info.json 需要
+
+def H   // 辅助函数对象 – 在 Stage 0 checkout 之后 load('jenkins-v9-helpers.groovy')
+
+
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Pipeline 主体
+// ════════════════════════════════════════════════════════════════════════════
+pipeline {
+    agent any
+
+    triggers {
+        gitlab(
+            triggerOnPush: true,
+            triggerOnMergeRequest: true,
+            branchFilterType: 'NameBasedFilter',
+            includeBranchesSpec: 'main'
+        )
+    }
+
+    options {
+        timestamps()
+        ansiColor('xterm')
+        disableConcurrentBuilds()
+        skipDefaultCheckout(true)
+        timeout(time: 180, unit: 'MINUTES')
+        buildDiscarder(logRotator(numToKeepStr: '30', artifactNumToKeepStr: '20'))
+        // parallelsAlwaysFailFast()  ← 已关闭：避免单个并行分支失败杀死全流水线
+    }
+
+    parameters {
+        choice(name: 'PIPELINE_VERSION', choices: ['Jenkinsfile-expert-v9', 'Jenkinsfile-v8-jkvideo', 'Jenkinsfile-expert-v8', 'Jenkinsfile-expert-v7', 'Jenkinsfile-expert-v6', 'Jenkinsfile-expert-v5', 'Jenkinsfile-expert-v4', 'Jenkinsfile-expert-v3', 'Jenkinsfile-expert-v2', 'Jenkinsfile'], description: 'Select Jenkinsfile version, newest first.')
+        choice(name: 'DEPLOY_ENV', choices: ['dev', 'test', 'prod'], description: '目标部署环境')
+        booleanParam(name: 'SKIP_SECURITY_SCAN', defaultValue: false, description: '跳过安全扫描')
+        booleanParam(name: 'RUN_UNIT_TESTS',     defaultValue: true,  description: '执行 JUnit + JaCoCo')
+        booleanParam(name: 'RUN_SMOKE_TEST',     defaultValue: true,  description: '部署后烟雾测试')
+        booleanParam(name: 'DRY_RUN',            defaultValue: true,  description: 'DRY RUN 模式')
+        choice(name: 'FLINK_RUN_MODE', choices: ['skip', 'run'], description: 'Flink 任务模式')
+        string(name: 'K8S_NAMESPACE',  defaultValue: 'ns-apps',  description: '主应用命名空间')
+        string(name: 'APP_HEALTH_URL', defaultValue: '', description: '健康检查地址；留空时自动发现 Kubernetes Service')
+
+        booleanParam(name: 'BUILD_JKVIDEO',    defaultValue: true,  description: '构建 JKVideo')
+        string(name: 'JKVIDEO_REPO_URL', defaultValue: 'http://gitlab-service/root/JKVideo.git', description: 'JKVideo 仓库')
+        string(name: 'JKVIDEO_BRANCH',   defaultValue: 'main', description: 'JKVideo 分支')
+        choice(name: 'JKVIDEO_PLATFORMS', choices: ['web', 'android+web', 'android'], description: 'JKVideo 平台')
+        booleanParam(name: 'JKVIDEO_RUN_JEST', defaultValue: true, description: 'JKVideo Jest 测试')
+
+        choice(name: 'DEPLOY_STRATEGY', choices: ['rolling', 'blue-green', 'canary'], description: '[v9] 部署策略')
+        string(name: 'CANARY_WEIGHT',   defaultValue: '20',  description: '[v9] 金丝雀权重 %')
+        booleanParam(name: 'SKIP_PERF_TEST',      defaultValue: true,  description: '[v9] 跳过 k6')
+        booleanParam(name: 'SKIP_DB_MIGRATION',   defaultValue: true,  description: '[v9] 跳过 Flyway')
+        booleanParam(name: 'SIGN_IMAGE',           defaultValue: false, description: '[v9] Cosign 签名')
+        booleanParam(name: 'UPLOAD_TO_MINIO',      defaultValue: false, description: '[v9] MinIO 归档')
+        booleanParam(name: 'TRIGGER_AIRFLOW_DAG',  defaultValue: false, description: '[v9] 触发 Airflow')
+        booleanParam(name: 'CHECK_TRINO_QUERY',    defaultValue: false, description: '[v9] Trino 验证')
+        booleanParam(name: 'VERIFY_ARGOCD_SYNC',   defaultValue: false, description: '[v9] ArgoCD 同步验证')
+        string(name: 'PERF_BASELINE_RPS', defaultValue: '100', description: '[v9] k6 最低 RPS')
+        string(name: 'ROLLBACK_TIMEOUT',  defaultValue: '30',  description: '[v9] 回滚等待秒数')
+    }
+
+    environment {
+        SCRIPT_NAME      = 'Jenkinsfile-expert-v9'
+        APP_NAME         = 'hello-app'
+        REGISTRY         = '127.0.0.1:30050'
+        CONFIG_REPO_URL  = 'http://gitlab-service/root/hello-app-config.git'
+        TRIVY_VER        = '0.68.2'
+        MAVEN_IMAGE      = 'maven:3-eclipse-temurin-17'
+        SONAR_URL        = 'http://192.168.1.58:30085'
+        SONAR_TOKEN      = credentials('sonar-token')
+        TRIVY_DB_REPO    = '10.43.243.46:5000/aquasecurity/trivy-db:2'
+        MAVEN_CACHE      = '/root/.m2'
+        NPM_CACHE        = '/root/.npm'
+        GITOPS_CREDENTIALS = 'gitlab-root-auth'
+        JKVIDEO_APP_NAME   = 'jkvideo'
+        KAFKA_NS    = 'ns-bigdata'
+        KAFKA_POD   = 'kafka-0'
+        KAFKA_PORT  = '9092'
+        FLINK_URL   = 'http://192.168.1.58:30081'
+        ES_URL         = 'http://10.43.236.105:9200'
+        PROMETHEUS_URL = 'http://10.43.111.46:9090'
+        GRAFANA_URL    = 'http://192.168.1.58:30084'
+        LOKI_URL       = 'http://10.43.7.197:3100'
+        KIBANA_URL     = 'http://192.168.1.58:30061'
+        JAEGER_URL     = 'http://10.43.200.190:16686'
+        ZABBIX_URL     = 'http://192.168.1.58:30086'
+        MINIO_HOST     = 'minio.data-infra.svc.cluster.local'
+        MINIO_PORT     = '9000'
+        MINIO_BUCKET   = 'devops-artifacts'
+        MINIO_ACCESS   = 'admin'
+        MINIO_SECRET   = 'Admin@123456'
+        AIRFLOW_URL    = 'http://10.43.35.53:8080'
+        TRINO_URL      = 'http://10.43.40.171:8080'
+        ARGOCD_URL     = 'http://10.43.243.153'
+        MYSQL_IP       = '192.168.1.58:30306'
+        MONGO_IP       = '192.168.1.58'
+        PG_IP          = '192.168.1.58:30532'
+        KAFKA_HOST     = ''
+    }
+
+    stages {
+
+        stage('清理环境') {
+            steps { deleteDir() }
+        }
+
+        stage('0. 初始化上下文') {
+            steps {
+                checkout scm
+                script {
+                    // 加载辅助函数库（独立 CPS 编译单元）
+                    H = load('jenkins-v9-helpers.groovy')
+                    sh 'mkdir -p meta reports'
+                    env.GIT_COMMIT_ID   = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
+                    env.GIT_BRANCH_NAME = sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim()
+                    env.GIT_COMMIT_MSG  = sh(script: 'git log -1 --pretty=%s', returnStdout: true).trim()
+                    env.GIT_AUTHOR      = sh(script: 'git log -1 --pretty=%an', returnStdout: true).trim()
+
+                    // ── 完全用 Shell 计算 SEMVER，避免 @NonCPS List 跨 CPS 边界序列化失败 ──
+                    def lastTag = sh(
+                        script: "git tag --list --sort=-v:refname | grep -E '^v[0-9]+\\.[0-9]+\\.[0-9]+\$' | head -1 2>/dev/null || true",
+                        returnStdout: true
+                    ).trim()
+                    if (!lastTag) lastTag = 'v0.0.0'
+
+                    def semverRaw = sh(
+                        script: """
+                            LAST_TAG='${lastTag}'
+                            MAJ=\$(echo "\$LAST_TAG" | sed 's/^v//' | cut -d. -f1)
+                            MIN=\$(echo "\$LAST_TAG" | cut -d. -f2)
+                            PAT=\$(echo "\$LAST_TAG" | cut -d. -f3)
+                            MAJ=\${MAJ:-0}; MIN=\${MIN:-0}; PAT=\${PAT:-0}
+                            MSG=\$(git log -1 --pretty=%s 2>/dev/null || true)
+                            if echo "\$MSG" | grep -qE 'BREAKING CHANGE|!:'; then
+                                MAJ=\$((MAJ + 1)); MIN=0; PAT=0
+                            elif echo "\$MSG" | grep -q '^feat'; then
+                                MIN=\$((MIN + 1)); PAT=0
+                            else
+                                PAT=\$((PAT + 1))
+                            fi
+                            printf "%d.%d.%d" "\$MAJ" "\$MIN" "\$PAT"
+                        """,
+                        returnStdout: true
+                    ).trim()
+                    if (semverRaw) {
+                        env.SEMVER = semverRaw
+                    } else {
+                        env.SEMVER = '0.0.1'
+                    }
+                    def msg = env.GIT_COMMIT_MSG ?: ''   // 必须保留：下方 currentBuild.description 使用
+                    echo "✅ SEMVER = ${env.SEMVER}"
+                    env.IMAGE_NAME        = "${env.REGISTRY}/${env.APP_NAME}:${env.SEMVER}"
+                    env.JKVIDEO_WEB_IMAGE = "${env.REGISTRY}/${env.JKVIDEO_APP_NAME}-web:${env.GIT_COMMIT_ID}"
+
+                    // 默认值（environment{} 块已移除，需在此初始化）
+                    env.PREV_DEPLOY_REV   = '0'
+                    env.PREV_SVC_SELECTOR = '{}'
+                    env.DEPLOY_STARTED    = 'false'
+
+                    if (!params.DRY_RUN) {
+                        try {
+                            env.PREV_DEPLOY_REV = sh(
+                                script: "kubectl rollout history deployment/${env.APP_NAME} -n ${params.K8S_NAMESPACE} 2>/dev/null | awk 'NF && \$1~/^[0-9]+\$/{rev=\$1} END{print (rev?rev:0)}'",
+                                returnStdout: true
+                            ).trim()
+                            env.PREV_SVC_SELECTOR = sh(
+                                script: "kubectl get svc ${env.APP_NAME} -n ${params.K8S_NAMESPACE} -o jsonpath='{.spec.selector}' 2>/dev/null || echo '{}'",
+                                returnStdout: true
+                            ).trim()
+                        } catch (ignored) { }
+                    }
+
+                    sh """
+                        { echo "# ChangeLog — v${env.SEMVER}"; echo; echo "Baseline: ${lastTag}"; echo
+                          git log ${lastTag == 'v0.0.0' ? '' : "${lastTag}..HEAD"} --pretty='- %h %s (%an)' --no-merges
+                        } > reports/CHANGELOG.md
+                    """
+                    writeFile file: 'meta/build-info.json', text: JsonOutput.toJson([
+                        script: env.SCRIPT_NAME, semver: env.SEMVER,
+                        image: env.IMAGE_NAME,   jkvideo: env.JKVIDEO_WEB_IMAGE,
+                        git_commit: env.GIT_COMMIT_ID, git_branch: env.GIT_BRANCH_NAME,
+                        git_author: env.GIT_AUTHOR,    build: env.BUILD_NUMBER,
+                        deploy_env: params.DEPLOY_ENV, strategy: params.DEPLOY_STRATEGY,
+                        dry_run: params.DRY_RUN,       build_url: env.BUILD_URL
+                    ])
+                    currentBuild.displayName = "#${env.BUILD_NUMBER} v${env.SEMVER} [${params.DEPLOY_ENV}/${params.DEPLOY_STRATEGY}]"
+                    currentBuild.description = "${env.GIT_AUTHOR} | ${msg.take(60)}"
+                    sh 'cat meta/build-info.json'
+                    H.notifyDingTalk('STARTED', "🚀 v${env.SEMVER} 启动 | ${params.DEPLOY_ENV} | ${params.DEPLOY_STRATEGY}")
+                    stash name: 'workspace-src', includes: '**/*', excludes: '.git/**, target/**, config-repo/**', useDefaultExcludes: false
+                }
+            }
+        }
+
+        stage('1.5 拉取 JKVideo 源码') {
+            steps {
+                script {
+                    if (!params.BUILD_JKVIDEO) {
+                        echo "BUILD_JKVIDEO=false, JKVideo source checkout safely no-op."
+                        sh "mkdir -p ${WORKSPACE}/jkvideo-src"
+                    } else {
+                        sh "mkdir -p ${WORKSPACE}/jkvideo-src"
+                        dir("${WORKSPACE}/jkvideo-src") {
+                            checkout([
+                                $class: 'GitSCM',
+                                branches: [[name: "*/${params.JKVIDEO_BRANCH}"]],
+                                userRemoteConfigs: [[url: params.JKVIDEO_REPO_URL, credentialsId: env.GITOPS_CREDENTIALS]]
+                            ])
+                        }
+                        stash name: 'jkvideo-src', includes: 'jkvideo-src/**/*', excludes: 'jkvideo-src/.git/**'
+                        echo "✅ JKVideo 源码拉取完成"
+                    }
+                }
+            }
+        }
+
+        stage('1. 执行前预检') {
+            steps {
+                sh '''
+                    set -eux
+                    test -f Dockerfile
+                    docker version
+                    kubectl version --client
+                    git --version
+                    python3 --version || echo "⚠️ python3 未安装（不影响流水线）"
+                    
+                    # 关键修改：防止 get nodes 卡住整个流水线
+                    timeout 15 kubectl get nodes --no-headers -o wide || echo "⚠️ kubectl get nodes 超时，继续执行"
+                    
+                    free -h
+                    command -v cosign || echo "⚠️ cosign 未安装"
+                    command -v syft || echo "⚠️ syft 未安装"
+                '''
+            }
+        }
+
+        stage('2. 并行质量关卡') {
+            parallel {
+
+                stage('2.1 源码脱敏审计 (Trivy FS)') {
+                    steps {
+                        script {
+                            if (params.SKIP_SECURITY_SCAN) {
+                                sh "mkdir -p reports && echo 'SKIP_SECURITY_SCAN=true, Trivy FS no-op.' > reports/trivy-fs.txt"
+                            } else {
+                                dir('ws-2-1') {
+                                    deleteDir(); unstash 'workspace-src'
+                                    sh '''
+                                        set -eux; mkdir -p reports
+                                        docker rm -f temp-trivy-fs || true
+                                        docker run -d --name temp-trivy-fs \
+                                          --entrypoint /bin/sh -w /work \
+                                          aquasec/trivy:${TRIVY_VER} -c 'sleep 3600'
+                                        docker cp . temp-trivy-fs:/work
+                                        docker exec temp-trivy-fs trivy fs /work --scanners secret --format table | tee reports/trivy-fs.txt
+                                        docker rm -f temp-trivy-fs
+                                    '''
+                                }
+                            }
+                        }
+                    }
+                }
+
+                stage('2.2 SonarQube + Quality Gate') {
+                    steps {
+                        script {
+                            if (params.SKIP_SECURITY_SCAN) {
+                                sh "mkdir -p reports && echo 'SKIP_SECURITY_SCAN=true, SonarQube no-op.' > reports/sonar.log"
+                            } else {
+                                catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
+                                    dir('ws-2-2') {
+                                        deleteDir()
+                                        unstash 'workspace-src'
+                                        sh '''
+                                            set -eux
+                                            if [ -f pom.xml ]; then
+                                                docker rm -f temp-sonar-scan 2>/dev/null || true
+                                                docker run -d --name temp-sonar-scan --network host \
+                                                    -v ${MAVEN_CACHE}:/root/.m2 -w /usr/src ${MAVEN_IMAGE} sleep 3600
+
+                                                docker cp . temp-sonar-scan:/usr/src/
+
+                                                docker exec temp-sonar-scan mvn -B -U compile sonar:sonar \
+                                                    -Dsonar.host.url=${SONAR_URL} \
+                                                    -Dsonar.token=${SONAR_TOKEN} \
+                                                    -Dsonar.projectKey=${APP_NAME} \
+                                                    -Dsonar.sources=. \
+                                                    -Dsonar.exclusions=**/*.js,**/*.html \
+                                                    -Dsonar.qualitygate.wait=false || true
+
+                                                docker rm -f temp-sonar-scan || true
+                                                echo "⚠️ SonarQube Quality Gate 未通过，已继续执行流水线"
+                                            else
+                                                echo "⚠️ 无 pom.xml，跳过 SonarQube"
+                                            fi
+                                        '''
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                stage('2.3 单元测试 (JUnit + JaCoCo)') {
+                    steps {
+                        script {
+                            if (!params.RUN_UNIT_TESTS) {
+                                sh "mkdir -p reports && echo 'RUN_UNIT_TESTS=false, unit test no-op.' > reports/unit-test.log"
+                            } else {
+                                dir('ws-2-3') {
+                                    deleteDir(); unstash 'workspace-src'
+                                    sh '''
+                                        set -eux
+                                        if [ -f pom.xml ]; then
+                                          docker rm -f temp-maven-test || true
+                                          docker run -d --name temp-maven-test \
+                                            -v ${MAVEN_CACHE}:/root/.m2 -w /usr/src ${MAVEN_IMAGE} sleep 3600
+                                          docker cp . temp-maven-test:/usr/src/
+                                          docker exec temp-maven-test mvn -B -U \
+                                            org.jacoco:jacoco-maven-plugin:prepare-agent test \
+                                            org.jacoco:jacoco-maven-plugin:report
+                                          mkdir -p target
+                                          docker cp temp-maven-test:/usr/src/target target || true
+                                          docker rm -f temp-maven-test
+                                        else
+                                          echo "⚠️ 无 pom.xml，跳过单元测试"
+                                        fi
+                                    '''
+                                }
+                            }
+                        }
+                    }
+                    post {
+                        always {
+                            script {
+                                def hasJUnit = sh(script: "find ws-2-3/target -path '*/surefire-reports/*.xml' -print -quit 2>/dev/null | grep -q .", returnStatus: true) == 0
+                                if (hasJUnit) {
+                                    junit allowEmptyResults: true, testResults: 'ws-2-3/target/**/surefire-reports/*.xml'
+                                } else {
+                                    echo 'No JUnit report files found; tests produced no XML reports.'
+                                }
+                            }
+                        }
+                    }
+                }
+
+                stage('2.4 JKVideo Jest 单元测试') {
+                    steps {
+                        script {
+                            if (!params.BUILD_JKVIDEO || !params.JKVIDEO_RUN_JEST) {
+                                sh "mkdir -p reports/jkvideo-jest && echo 'JKVideo Jest disabled, safe no-op.' > reports/jkvideo-jest/jest.log"
+                            } else {
+                                dir('ws-2-4') {
+                                    deleteDir(); unstash 'jkvideo-src'
+                                    sh '''
+                                        set -eux
+                                        docker rm -f temp-jkvideo-jest || true
+                                        docker run -d --name temp-jkvideo-jest \
+                                          -v ${NPM_CACHE}:/root/.npm -w /app node:20-alpine sleep 3600
+                                        docker cp jkvideo-src/. temp-jkvideo-jest:/app/
+                                        docker exec temp-jkvideo-jest npm ci --prefer-offline --cache /root/.npm
+                                        docker exec temp-jkvideo-jest npx tsc --noEmit || true
+                                        docker exec temp-jkvideo-jest npm test -- \
+                                          --config jest.config.js --coverage --ci \
+                                          --passWithNoTests --forceExit \
+                                          --reporters=default --reporters=jest-junit || true
+                                        mkdir -p reports/jkvideo-jest
+                                        docker cp temp-jkvideo-jest:/app/coverage/junit.xml reports/jkvideo-jest/ 2>/dev/null || true
+                                        docker cp temp-jkvideo-jest:/app/coverage/lcov.info reports/jkvideo-jest/ 2>/dev/null || true
+                                        docker rm -f temp-jkvideo-jest
+                                    '''
+                                }
+                            }
+                        }
+                    }
+                    post {
+                        always {
+                            script {
+                                if (fileExists('ws-2-4/reports/jkvideo-jest/junit.xml')) {
+                                    junit allowEmptyResults: true, testResults: 'ws-2-4/reports/jkvideo-jest/junit.xml'
+                                } else {
+                                    echo 'No JKVideo Jest JUnit report found; stage recorded safe no-op output.'
+                                }
+                            }
+                        }
+                    }
+                }
+
+                stage('2.5 数据库连通性预检') {
+                    steps {
+                        sh '''
+                            set -eux
+                            MYSQL_IP=$(kubectl get pod -n ns-data -l app=mysql -o jsonpath="{.items[0].status.podIP}" 2>/dev/null || echo "127.0.0.1")
+                            MONGO_IP=$(kubectl get pod -n ns-data -l app.kubernetes.io/name=mongodb -o jsonpath="{.items[0].status.podIP}" 2>/dev/null || echo "")
+                            PG_IP=$(kubectl get pod -n ns-data -l app=postgresql -o jsonpath="{.items[0].status.podIP}" 2>/dev/null || echo "127.0.0.1")
+                            docker rm -f temp-db-check || true
+                            docker run -d --name temp-db-check --network host alpine:3.20 sleep 120
+                            docker exec temp-db-check sh -c "nc -z -w 5 ${MYSQL_IP} 3306  && echo SUCCESS:MySQL      || echo FAIL:MySQL不可达"
+                            if [ -n "${MONGO_IP}" ]; then
+                              docker exec temp-db-check sh -c "nc -z -w 5 ${MONGO_IP} 27017 && echo SUCCESS:MongoDB || echo FAIL:MongoDB不可达"
+                            else
+                              echo "INFO:MongoDB未部署，跳过连通性检查"
+                            fi
+                            docker exec temp-db-check sh -c "nc -z -w 5 ${PG_IP} 5432     && echo SUCCESS:PostgreSQL || echo FAIL:PostgreSQL不可达"
+                            docker rm -f temp-db-check
+                        '''
+                    }
+                }
+
+
+
+                stage('2.6 依赖差异报告') {
+                    steps {
+                        dir('ws-2-6') {
+                            deleteDir(); unstash 'workspace-src'
+                            sh '''
+                                set -eux; mkdir -p reports
+                                if [ -f pom.xml ]; then
+                                  docker rm -f temp-dep-diff || true
+                                  docker run -d --name temp-dep-diff \
+                                    -v ${MAVEN_CACHE}:/root/.m2 -w /usr/src ${MAVEN_IMAGE} sleep 120
+                                  docker cp . temp-dep-diff:/usr/src/
+                                  docker exec temp-dep-diff mvn -B -q dependency:tree -DoutputFile=/tmp/dep-tree.txt
+                                  docker cp temp-dep-diff:/tmp/dep-tree.txt reports/dep-tree-current.txt || true
+                                  docker rm -f temp-dep-diff
+                                else
+                                  echo "no pom.xml" > reports/dep-tree-current.txt
+                                fi
+                            '''
+                        }
+                    }
+                }
+
+            }
+        }
+
+        stage('3. Flyway 迁移预演') {
+            steps {
+                script {
+                    if (params.SKIP_DB_MIGRATION || params.DRY_RUN) {
+                        sh "mkdir -p reports && echo 'Flyway safe no-op: SKIP_DB_MIGRATION=${params.SKIP_DB_MIGRATION}, DRY_RUN=${params.DRY_RUN}' > reports/flyway-info.txt"
+                    } else {
+                        def has = sh(script: "find . -path '*/db/migration/*.sql' 2>/dev/null | grep -q . && echo yes || echo no", returnStdout: true).trim()
+                        if (has == 'yes') {
+                        sh '''
+                            set -eux; mkdir -p reports
+                            PG_HOST=$(kubectl get pod -n ns-data -l app=postgresql -o jsonpath='{.items[0].status.podIP}')
+                            docker rm -f temp-flyway || true
+                            docker run -d --name temp-flyway --network host \
+                              -v $(pwd)/src/main/resources/db/migration:/flyway/sql flyway/flyway:10 sleep 120 || true
+                            docker exec temp-flyway flyway \
+                              -url="jdbc:postgresql://${PG_HOST}:5432/registry" \
+                              -user=postgres -password=devops123 -locations=filesystem:/flyway/sql \
+                              info 2>&1 | tee reports/flyway-info.txt || true
+                            docker rm -f temp-flyway || true
+                        '''
+                        } else {
+                            sh "mkdir -p reports && echo 'No db migration scripts found.' > reports/flyway-info.txt"
+                            echo "⚠️ 无迁移脚本，Flyway 预演 no-op"
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('4. 产物构建 (Maven Build)') {
+            steps {
+                unstash 'workspace-src'
+                sh '''
+                    set -eux
+                    if [ -f pom.xml ]; then
+                      docker rm -f temp-maven-build || true
+                      docker run -d --name temp-maven-build \
+                        -v ${MAVEN_CACHE}:/root/.m2 -w /usr/src ${MAVEN_IMAGE} sleep 3600
+                      docker cp . temp-maven-build:/usr/src/
+                      docker exec temp-maven-build mvn -B -U clean package -DskipTests -Drevision=${SEMVER:-0.0.1}
+                      rm -rf target
+                      docker cp temp-maven-build:/usr/src/target .
+                      docker rm -f temp-maven-build
+                    else
+                      echo "⚠️ 无 pom.xml，跳过"
+                    fi
+                '''
+            }
+        }
+
+        stage('4.5 产物校验与摘要') {
+            steps {
+                sh '''
+                    set -eux; mkdir -p meta
+                    if ls target/*.jar >/dev/null 2>&1; then
+                      sha256sum target/*.jar | tee meta/artifact.sha256
+                      ls -lah target/*.jar | tee meta/artifact.list
+                    else
+                      echo "no-jar-found" | tee meta/artifact.list
+                    fi
+                '''
+            }
+        }
+
+        stage('3.5 JKVideo 全平台构建') {
+            parallel {
+
+                stage('JKVideo Android') {
+                    steps {
+                        script {
+                            def androidSelected = params.BUILD_JKVIDEO && (params.JKVIDEO_PLATFORMS == 'android' || params.JKVIDEO_PLATFORMS == 'android+web')
+                            if (!androidSelected) {
+                                sh "mkdir -p reports/jkvideo-android && echo 'Android platform not selected, safe no-op.' > reports/jkvideo-android/build.log"
+                            } else {
+                                catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
+                                    dir('ws-android') {
+                                        deleteDir(); unstash 'jkvideo-src'
+                                        sh '''
+                                            mkdir -p reports/jkvideo-android
+                                            echo "PLACEHOLDER — 配置 android-builder 镜像后启用" > reports/jkvideo-android/build.log
+                                        '''
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                stage('JKVideo Web') {
+                    steps {
+                        script {
+                            def webSelected = params.BUILD_JKVIDEO && (params.JKVIDEO_PLATFORMS == 'web' || params.JKVIDEO_PLATFORMS == 'android+web')
+                            if (!webSelected) {
+                                sh "mkdir -p reports/jkvideo-web && echo 'Web platform not selected, safe no-op.' > reports/jkvideo-web/build.log"
+                            } else {
+                                dir('ws-web') {
+                                    deleteDir(); unstash 'jkvideo-src'
+                                    timeout(time: 20, unit: 'MINUTES') {
+                                        sh '''
+                                            set -eux
+                                            docker rm -f temp-jkvideo-web || true
+                                            docker run -d --name temp-jkvideo-web \
+                                              -v ${NPM_CACHE}:/root/.npm -w /app node:20-alpine sleep 3600
+                                            docker cp jkvideo-src/. temp-jkvideo-web:/app/
+                                            docker exec temp-jkvideo-web npm ci --prefer-offline --cache /root/.npm
+                                            docker exec temp-jkvideo-web sh -c \
+                                              "npx expo export --platform web --output-dir dist/web 2>&1" | cat
+                                            mkdir -p reports/jkvideo-web
+                                            docker cp temp-jkvideo-web:/app/dist/web/. reports/jkvideo-web/
+                                            tar -czf reports/jkvideo-web.tar.gz -C reports/jkvideo-web .
+                                            docker rm -f temp-jkvideo-web
+                                            echo "✅ JKVideo Web 构建成功"
+                                        '''
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    post {
+                        always {
+                            sh 'docker rm -f temp-jkvideo-web 2>/dev/null || true'
+                            script {
+                                if (fileExists('ws-web/reports/jkvideo-web.tar.gz')) {
+                                    archiveArtifacts allowEmptyArchive: true, artifacts: 'ws-web/reports/jkvideo-web.tar.gz'
+                                } else {
+                                    echo 'No JKVideo Web archive found; web build was not selected.'
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('5. 业务镜像入库 (Docker Push)') {
+            steps {
+                script {
+                    if (params.DRY_RUN) {
+                        sh "mkdir -p reports && echo 'DRY_RUN=true, Docker build/push safe no-op for ${IMAGE_NAME}' > reports/docker-push.log"
+                    } else {
+                        catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
+                        def REGISTRY = env.REGISTRY   // 192.168.1.58:30050
+                        def IMAGE    = "${REGISTRY}/${env.APP_NAME}:${env.SEMVER}"
+
+                        echo "🐳 目标镜像: ${IMAGE}"
+
+                        sh """
+                            set -eux
+                            # 登录（失败也不退出）
+                            echo "Harbor12345" | docker login ${REGISTRY} -u admin --password-stdin || echo "⚠️ Harbor 登录失败，继续流水线"
+
+                            # 构建
+                            docker build --network none \\
+                                --label app.name=hello-app \\
+                                --label app.version=${SEMVER} \\
+                                --label git.commit=${GIT_COMMIT_ID} \\
+                                --label git.branch=${GIT_BRANCH_NAME} \\
+                                --label build.number=${BUILD_NUMBER} \\
+                                -t ${IMAGE} \\
+                                -t ${REGISTRY}/${APP_NAME}:latest .
+
+                            # 推送（失败也不退出）
+                            docker push ${IMAGE} || echo "⚠️ 镜像推送失败，继续流水线"
+                            docker push ${REGISTRY}/${APP_NAME}:latest || true
+                        """
+                        }
+                    }
+                }
+            }
+        }
+        stage('5.5 MinIO 制品归档') {
+            steps {
+                script {
+                    if (!params.UPLOAD_TO_MINIO || params.DRY_RUN) {
+                        sh "mkdir -p reports && echo 'MinIO safe no-op: UPLOAD_TO_MINIO=${params.UPLOAD_TO_MINIO}, DRY_RUN=${params.DRY_RUN}' > reports/minio-upload.log"
+                    } else {
+                        catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
+                            H.uploadToMinio()
+                        }
+                    }
+                }
+            }
+        }
+        
+        stage('5.6 JKVideo Web 镜像入库') {
+            steps {
+                script {
+                    def webSelected = params.BUILD_JKVIDEO && (params.JKVIDEO_PLATFORMS == 'web' || params.JKVIDEO_PLATFORMS == 'android+web')
+                    if (!webSelected || params.DRY_RUN) {
+                        sh "mkdir -p reports && echo 'JKVideo web image safe no-op: selected=${webSelected}, DRY_RUN=${params.DRY_RUN}' > reports/jkvideo-web-image.log"
+                    } else {
+                        H.buildJkvideoWebImage(env.JKVIDEO_WEB_IMAGE)
+                    }
+                }
+            }
+            post {
+                always { sh 'docker rmi ${JKVIDEO_WEB_IMAGE} 2>/dev/null || true' }
+            }
+        }
+
+        stage('6. 并行安全红线') {
+            parallel {
+
+                stage('6.1 镜像漏洞扫描 (Trivy Image)') {
+                    steps {
+                        script {
+                            if (params.SKIP_SECURITY_SCAN || params.DRY_RUN) {
+                                sh "mkdir -p reports && echo '{\"status\":\"safe-no-op\",\"SKIP_SECURITY_SCAN\":\"${params.SKIP_SECURITY_SCAN}\",\"DRY_RUN\":\"${params.DRY_RUN}\"}' > reports/trivy-image.json"
+                            } else {
+                                catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE') {
+                                    sh '''
+                                        set -eux; mkdir -p reports
+                                        docker run --rm --network host \
+                                          -v /var/run/docker.sock:/var/run/docker.sock \
+                                          aquasec/trivy:${TRIVY_VER} image \
+                                          --db-repository ${TRIVY_DB_REPO} \
+                                          --exit-code 0 --severity CRITICAL,HIGH \
+                                          --format json ${IMAGE_NAME} | tee reports/trivy-image.json
+                                        CRIT=$(grep -c '"Severity":"CRITICAL"' reports/trivy-image.json || true)
+                                        HIGH=$(grep -c '"Severity":"HIGH"' reports/trivy-image.json || true)
+                                        CRIT=${CRIT:-0}
+                                        HIGH=${HIGH:-0}
+                                        echo "🔍 漏洞统计: CRITICAL=${CRIT}, HIGH=${HIGH}"
+                                        if [ "${CRIT}" -gt 0 ]; then
+                                          echo "⚠️ 发现 ${CRIT} 个 CRITICAL 漏洞，已记录，请尽快修复"
+                                        else
+                                          echo "✅ 无 CRITICAL 漏洞"
+                                        fi
+                                    '''
+                                }
+                            }
+                        }
+                    }
+                }
+
+                stage('6.2 SBOM 生成') {
+                    steps {
+                        script {
+                            if (params.DRY_RUN) {
+                                sh "mkdir -p reports && echo '{\"status\":\"safe-no-op\",\"DRY_RUN\":\"true\"}' > reports/sbom.cyclonedx.json"
+                            } else {
+                                sh '''
+                                    set -eux; mkdir -p reports
+                                    if command -v syft >/dev/null 2>&1; then
+                                      syft ${IMAGE_NAME} -o cyclonedx-json > reports/sbom.cyclonedx.json
+                                      echo "✅ SBOM（Syft）"
+                                    else
+                                      docker run --rm --network host \
+                                        -v /var/run/docker.sock:/var/run/docker.sock \
+                                        aquasec/trivy:${TRIVY_VER} image --format cyclonedx \
+                                        ${IMAGE_NAME} > reports/sbom.cyclonedx.json || true
+                                      echo "✅ SBOM（Trivy 降级）"
+                                    fi
+                                '''
+                            }
+                        }
+                    }
+                }
+
+                stage('6.3 镜像签名 (Cosign)') {
+                    steps {
+                        script {
+                            if (!params.SIGN_IMAGE || params.DRY_RUN) {
+                                sh "mkdir -p reports && echo 'Cosign safe no-op: SIGN_IMAGE=${params.SIGN_IMAGE}, DRY_RUN=${params.DRY_RUN}' > reports/cosign.log"
+                            } else {
+                                try {
+                                withCredentials([
+                                    string(credentialsId: 'cosign-private-key',  variable: 'COSIGN_KEY'),
+                                    string(credentialsId: 'cosign-key-password', variable: 'COSIGN_PASSWORD')
+                                ]) {
+                                    sh '''
+                                        set -eux
+                                        if command -v cosign >/dev/null 2>&1; then
+                                          echo "${COSIGN_KEY}" | base64 -d > /tmp/cosign.key
+                                          chmod 600 /tmp/cosign.key
+                                          COSIGN_PASSWORD="${COSIGN_PASSWORD}" cosign sign \
+                                            --key /tmp/cosign.key \
+                                            --annotations "semver=${SEMVER}" \
+                                            --annotations "git.commit=${GIT_COMMIT_ID}" \
+                                            ${IMAGE_NAME}
+                                          rm -f /tmp/cosign.key
+                                          echo "✅ 镜像签名完成"
+                                        else
+                                          echo "⚠️ cosign 未安装"
+                                        fi
+                                    '''
+                                }
+                                } catch (e) { echo "⚠️ 签名跳过：${e.message}" }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('7. 基建健康度巡检 (全平台 16 服务)') {
+            steps {
+                script {
+                    try {
+                        def kafkaHost = sh(
+                            script: '''
+                                POD_IP=$(kubectl get pod -n ns-bigdata -l app=kafka -o jsonpath='{.items[0].status.podIP}' 2>/dev/null || true)
+                                if [ -n "$POD_IP" ]; then
+                                  printf "%s" "$POD_IP"
+                                else
+                                  kubectl get svc kafka -n ns-bigdata -o jsonpath='{.spec.clusterIP}' 2>/dev/null || printf "kafka.ns-bigdata.svc.cluster.local"
+                                fi
+                            ''',
+                            returnStdout: true
+                        ).trim()
+                        H.runInfraCheckFixed(kafkaHost ?: 'kafka.ns-bigdata.svc.cluster.local', '9092')
+                    } catch (e) {
+                        echo "⚠️ 平台巡检部分失败（不阻断流水线）：${e.message}"
+                    }
+                }
+            }
+        }
+
+        stage('8. Flink 流水线任务发布') {
+            steps {
+                script {
+                    if (params.FLINK_RUN_MODE != 'run') {
+                        sh "mkdir -p reports && echo 'FLINK_RUN_MODE=${params.FLINK_RUN_MODE}, Flink submit safe no-op.' > reports/flink-submit.log"
+                    } else if (params.DRY_RUN) {
+                        sh "mkdir -p reports && curl -fsS --max-time 10 ${env.FLINK_URL}/overview > reports/flink-overview.json && echo 'DRY_RUN=true, validated Flink overview only.' | tee reports/flink-submit.log"
+                    } else {
+                        def jarFile = sh(
+                            script: 'ls target/*-shaded.jar target/flink-kafka-demo-1.0-SNAPSHOT.jar 2>/dev/null | head -1',
+                            returnStdout: true
+                        ).trim()
+                        if (!jarFile) {
+                            sh "mkdir -p reports && echo 'No Flink jar found.' > reports/flink-submit.log"
+                            echo '⚠️ 未发现 Flink JAR，Flink 发布 no-op'
+                        } else {
+                            H.submitFlinkJob(env.FLINK_URL, jarFile)
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('9. GitOps 多环境分发') {
+            steps {
+                script {
+                    if (params.DRY_RUN) {
+                        sh "mkdir -p reports && echo 'DRY_RUN=true, GitOps update safe no-op for ${IMAGE_NAME}' > reports/gitops.log"
+                    } else {
+                        dir('config-repo') {
+                            checkout([
+                                $class: 'GitSCM',
+                                branches: [[name: 'main']],
+                                userRemoteConfigs: [[url: "${env.CONFIG_REPO_URL}", credentialsId: "${env.GITOPS_CREDENTIALS}"]]
+                            ])
+                            def manifest   = "${params.DEPLOY_ENV}/deployment.yaml"
+                            def commitMsg  = "ci(v9): deploy ${env.APP_NAME} v${env.SEMVER}(${env.GIT_COMMIT_ID}) to ${params.DEPLOY_ENV} [${params.DEPLOY_STRATEGY}]"
+                            def jkManifest = (params.BUILD_JKVIDEO &&
+                                (params.JKVIDEO_PLATFORMS == 'web' || params.JKVIDEO_PLATFORMS == 'android+web')) ?
+                                "${params.DEPLOY_ENV}/jkvideo-web-deployment.yaml" : ''
+                            def jkImage    = jkManifest ? env.JKVIDEO_WEB_IMAGE : ''
+                            H.gitOpsPush(manifest, env.IMAGE_NAME, commitMsg,
+                                       jkManifest, jkImage, env.GITOPS_CREDENTIALS)
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('9.5 ArgoCD 同步状态验证') {
+            steps {
+                script {
+                    if (!params.VERIFY_ARGOCD_SYNC) {
+                        sh "mkdir -p reports && echo 'VERIFY_ARGOCD_SYNC=false, ArgoCD verify safe no-op.' > reports/argocd-sync.log"
+                    } else {
+                        sh '''
+                            set -eux
+                            mkdir -p reports
+                            for i in $(seq 1 3); do
+                                SYNC=$(kubectl get application hello-app -n argocd -o jsonpath="{.status.sync.status}" 2>/dev/null || echo "Unknown")
+                                HEALTH=$(kubectl get application hello-app -n argocd -o jsonpath="{.status.health.status}" 2>/dev/null || echo "Unknown")
+                                echo "[$i/3] sync=${SYNC}, health=${HEALTH}" | tee -a reports/argocd-sync.log
+                                [ "$SYNC" = "Synced" ] && [ "$HEALTH" = "Healthy" ] && exit 0
+                                sleep 5
+                            done
+                            echo "ArgoCD not fully synced/healthy; recorded only, pipeline continues." | tee -a reports/argocd-sync.log
+                        '''
+                    }
+                }
+            }
+        }
+
+
+        stage('10. 发布闸门 (test/prod)') {
+            steps {
+                script {
+                    if (params.DRY_RUN || !(params.DEPLOY_ENV in ['test', 'prod'])) {
+                        sh "mkdir -p reports && echo 'Approval gate no-op: DEPLOY_ENV=${params.DEPLOY_ENV}, DRY_RUN=${params.DRY_RUN}' > reports/approval.log"
+                    } else {
+                        H.notifyDingTalk('APPROVAL', "🔔 请审批 v${env.SEMVER} → ${params.DEPLOY_ENV}")
+                        timeout(time: 10, unit: 'MINUTES') {
+                            input(message: "确认发布 v${env.SEMVER} → ${params.DEPLOY_ENV}（策略: ${params.DEPLOY_STRATEGY}）?", ok: '确认发布')
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('11. 部署') {
+            steps {
+                script {
+                    if (params.DRY_RUN) {
+                        sh "mkdir -p reports && echo 'DRY_RUN=true, deployment safe no-op for ${params.DEPLOY_STRATEGY}' > reports/deploy.log"
+                    } else {
+                        env.DEPLOY_STARTED = 'true'
+                        switch (params.DEPLOY_STRATEGY) {
+                            case 'blue-green':
+                                H.deployBlueGreen(env.APP_NAME, params.K8S_NAMESPACE, env.IMAGE_NAME, env.SEMVER)
+                                break
+                            case 'canary':
+                                H.deployCanary(env.APP_NAME, params.K8S_NAMESPACE, env.IMAGE_NAME, env.SEMVER, params.CANARY_WEIGHT.toInteger())
+                                break
+                            default:
+                                H.deployRolling(env.APP_NAME, params.K8S_NAMESPACE, env.IMAGE_NAME)
+                                break
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('12. 部署后验证 (Smoke Test + Loki)') {
+            steps {
+                script {
+                    if (params.DRY_RUN) {
+                        sh """
+                            set +e
+                            mkdir -p reports
+                            NS='${params.K8S_NAMESPACE}'
+                            REQUESTED_URL='${params.APP_HEALTH_URL ?: ''}'
+                            SERVICE_IP=\$(kubectl get svc ${env.APP_NAME} -n "\$NS" -o jsonpath='{.spec.clusterIP}' 2>/dev/null || true)
+                            SERVICE_URL=''
+                            [ -n "\$SERVICE_IP" ] && SERVICE_URL="http://\$SERVICE_IP/"
+                            DNS_URL="http://${env.APP_NAME}.\${NS}.svc.cluster.local/"
+
+                            : > reports/smoke.log
+                            echo "DRY_RUN smoke candidates:" | tee -a reports/smoke.log
+                            for URL in "\$REQUESTED_URL" "\$SERVICE_URL" "\$DNS_URL"; do
+                              [ -n "\$URL" ] || continue
+                              echo "checking \$URL" | tee -a reports/smoke.log
+                              if curl -fsS --max-time 10 "\$URL" >/dev/null 2>&1; then
+                                echo "DRY_RUN smoke URL reachable: \$URL" | tee -a reports/smoke.log
+                                exit 0
+                              fi
+                            done
+                            echo "DRY_RUN smoke URL not reachable; deployment was not changed." | tee -a reports/smoke.log
+                        """
+                    } else {
+                        def labelSelector =
+                            params.DEPLOY_STRATEGY == 'blue-green' ? "app=${env.APP_NAME},track=blue" :
+                            params.DEPLOY_STRATEGY == 'canary'     ? "app=${env.APP_NAME},track=canary" :
+                                                                     "app=${env.APP_NAME}"
+                        catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE') {
+                            H.runSmokeTest(params.K8S_NAMESPACE, labelSelector)
+                        }
+                        if (params.BUILD_JKVIDEO &&
+                            (params.JKVIDEO_PLATFORMS == 'web' || params.JKVIDEO_PLATFORMS == 'android+web')) {
+                            sh '''
+                                JK_POD=$(kubectl get pods -n ns-apps -l app=jkvideo-web \
+                                  --field-selector status.phase=Running \
+                                  -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo '')
+                                [ -n "$JK_POD" ] && \
+                                  kubectl exec -n ns-apps $JK_POD -- wget -qO- http://127.0.0.1:80/ > /dev/null \
+                                  && echo "✅ JKVideo Web Smoke 通过" || echo "⚠️ JKVideo Web 未就绪"
+                            '''
+                        }
+                        try {
+                            H.runLokiCheck()
+                        } catch (e) {
+                            echo "⚠️ Loki 验证失败（不阻断）：${e.message}"
+                        }
+                    }
+                }
+            }
+        }
+
+         stage('13. k6 性能基线测试') {
+            steps {
+                script {
+                    if (params.SKIP_PERF_TEST || params.DRY_RUN || params.DEPLOY_ENV == 'prod') {
+                        sh "mkdir -p reports && echo 'k6 safe no-op: SKIP_PERF_TEST=${params.SKIP_PERF_TEST}, DRY_RUN=${params.DRY_RUN}, DEPLOY_ENV=${params.DEPLOY_ENV}' > reports/k6-result.json"
+                    } else {
+                        catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
+                        def perfUrl = params.APP_HEALTH_URL?.trim()
+                        if (!perfUrl || perfUrl.contains('.svc.cluster.local')) {
+                            def nodePort = sh(script: "kubectl get svc ${env.APP_NAME} -n ${params.K8S_NAMESPACE} -o jsonpath='{.spec.ports[0].nodePort}' 2>/dev/null || true", returnStdout: true).trim()
+                            if (nodePort?.isInteger()) {
+                                perfUrl = "http://192.168.1.58:${nodePort}/"
+                            } else {
+                                def serviceIp = sh(script: "kubectl get svc ${env.APP_NAME} -n ${params.K8S_NAMESPACE} -o jsonpath='{.spec.clusterIP}' 2>/dev/null || true", returnStdout: true).trim()
+                                perfUrl = serviceIp ? "http://${serviceIp}/" : "http://${env.APP_NAME}.${params.K8S_NAMESPACE}.svc.cluster.local/"
+                            }
+                        }
+                        writeFile file: '.k6-perf.js', text: """\
+        import http from 'k6/http';
+        import { check, sleep } from 'k6';
+        export let options = { vus: 10, duration: '30s', thresholds: { http_req_duration: ['p(95)<1000'], http_reqs: ['rate>${params.PERF_BASELINE_RPS}'] } };
+        export default function () { let res = http.get('${perfUrl}'); check(res, { 'status ok': (r) => r.status === 200 }); sleep(0.2); };
+        """.stripIndent()
+
+                        sh '''
+                            set -eux
+                            mkdir -p reports
+                            scp -o StrictHostKeyChecking=no .k6-perf.js root@192.168.1.58:/tmp/.k6-perf.js || echo "⚠️ scp 失败，继续"
+                            ssh -o StrictHostKeyChecking=no root@192.168.1.58 "
+                                k6 run --out json=/tmp/k6-result.json /tmp/.k6-perf.js && echo '✅ k6 通过' || echo '⚠️ k6 未通过'
+                            " || echo "⚠️ k6 执行失败，继续流水线"
+                            scp -o StrictHostKeyChecking=no root@192.168.1.58:/tmp/k6-result.json reports/ 2>/dev/null || true
+                            ssh -o StrictHostKeyChecking=no root@192.168.1.58 "rm -f /tmp/.k6-perf.js /tmp/k6-result.json" 2>/dev/null || true
+                            rm -f .k6-perf.js
+                        '''
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('14. Prometheus 指标回归') {
+            steps {
+                script {
+                    if (params.DRY_RUN) {
+                        sh "mkdir -p reports && echo '{\"mode\":\"dry-run\",\"error_rate\":\"0\"}' > reports/prometheus-baseline.json"
+                    } else {
+                        sh """
+                            set -eux; mkdir -p reports
+                            ERROR_RATE=\$(curl -sG '${env.PROMETHEUS_URL}/api/v1/query' \
+                              --data-urlencode 'query=rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total[5m]) * 100' \
+                              | python3 -c "
+                                import sys, json
+                                d = json.load(sys.stdin)
+                                r = d.get('data', {}).get('result', [])
+                                print(r[0]['value'][1] if r else '0')
+                                " 2>/dev/null || echo '0')
+                            echo "5xx 错误率: \${ERROR_RATE}%"
+                            echo '{"error_rate":"'\${ERROR_RATE}'","build":"${env.BUILD_NUMBER}"}' > reports/prometheus-baseline.json
+                            python3 -c "
+rate = float('\${ERROR_RATE}' or '0')
+if rate > 2.0:
+    print(f'❌ 错误率 {rate:.2f}% > 2%')
+    exit(1)
+print(f'✅ 错误率 {rate:.2f}%，符合基线')
+"
+                        """
+                    }
+                }
+            }
+        }
+
+        stage('15. Airflow DAG 触发') {
+            steps {
+                script {
+                    if (!params.TRIGGER_AIRFLOW_DAG || params.DRY_RUN) {
+                        sh "mkdir -p reports && echo 'Airflow safe no-op: TRIGGER_AIRFLOW_DAG=${params.TRIGGER_AIRFLOW_DAG}, DRY_RUN=${params.DRY_RUN}' > reports/airflow.log"
+                    } else {
+                        sh '''
+                            set -eux
+                            mkdir -p reports
+                            curl -sf -X POST -H 'Content-Type: application/json' -u admin:zsp359742 \
+                              "${AIRFLOW_URL}/api/v1/dags/example_bash_operator/dagRuns" \
+                              -d "{\"conf\":{\"triggered_by\":\"jenkins\",\"build\":\"${BUILD_NUMBER}\"}}" \
+                              && echo '✅ Airflow DAG 触发成功' | tee reports/airflow.log \
+                              || echo '⚠️ Airflow 触发失败，已记录' | tee reports/airflow.log
+                        '''
+                    }
+                }
+            }
+        }
+
+        stage('16. Trino 数仓指标验证') {
+            steps {
+                script {
+                    if (!params.CHECK_TRINO_QUERY || params.DRY_RUN) {
+                        sh "mkdir -p reports && echo 'Trino safe no-op: CHECK_TRINO_QUERY=${params.CHECK_TRINO_QUERY}, DRY_RUN=${params.DRY_RUN}' > reports/trino.log"
+                    } else {
+                        sh '''
+                            set -eux
+                            mkdir -p reports
+                            curl -sf -H 'X-Trino-User: admin' "${TRINO_URL}/v1/node" \
+                              | python3 -c "
+import sys, json
+nodes = json.load(sys.stdin)
+print(f'Trino 活跃节点: {len(nodes)}')
+assert len(nodes) > 0
+print('✅ Trino 集群正常')
+" | tee reports/trino.log || echo "⚠️ Trino 验证失败，已记录" | tee reports/trino.log
+                        '''
+                    }
+                }
+            }
+        }
+
+        stage('17. 构建总结 & Git Tag') {
+            steps {
+                script {
+                    def summary = """\
+                        ═══════════════════════════════════════════════════════
+                        DevSecOps × BigData × GitOps — Build Summary
+                        ═══════════════════════════════════════════════════════
+                        Script       : ${env.SCRIPT_NAME}
+                        SemVer       : v${env.SEMVER}
+                        Image        : ${env.IMAGE_NAME}
+                        JKVideo Web  : ${env.JKVIDEO_WEB_IMAGE}
+                        Build        : #${env.BUILD_NUMBER}
+                        Deploy Env   : ${params.DEPLOY_ENV}
+                        Strategy     : ${params.DEPLOY_STRATEGY}
+                        Git Branch   : ${env.GIT_BRANCH_NAME}
+                        Git Commit   : ${env.GIT_COMMIT_ID}
+                        Git Author   : ${env.GIT_AUTHOR}
+                        Commit Msg   : ${env.GIT_COMMIT_MSG}
+                        Flink Mode   : ${params.FLINK_RUN_MODE}
+                        Dry Run      : ${params.DRY_RUN}
+                        Sign Image   : ${params.SIGN_IMAGE}
+                        MinIO Upload : ${params.UPLOAD_TO_MINIO}
+                        Airflow DAG  : ${params.TRIGGER_AIRFLOW_DAG}
+                        Trino Check  : ${params.CHECK_TRINO_QUERY}
+                        ArgoCD Verify: ${params.VERIFY_ARGOCD_SYNC}
+                        ═══════════════════════════════════════════════════════
+                        """.stripIndent()
+                    writeFile file: 'meta/build-summary.txt', text: summary
+                    sh 'cat meta/build-summary.txt'
+
+                    if (!params.DRY_RUN) {
+                        try {
+                            withCredentials([usernamePassword(
+                                credentialsId: "${env.GITOPS_CREDENTIALS}",
+                                usernameVariable: 'GIT_USERNAME',
+                                passwordVariable: 'GIT_PASSWORD'
+                            )]) {
+                                sh """
+                                    git config user.email "jenkins@devops.local"
+                                    git config user.name "jenkins-bot"
+                                    git tag -a v${env.SEMVER} -m "Jenkins #${env.BUILD_NUMBER}" || true
+                                    git push http://\${GIT_USERNAME}:\${GIT_PASSWORD}@gitlab-service/root/${env.APP_NAME}.git v${env.SEMVER} || true
+                                    echo "✅ Git tag v${env.SEMVER}"
+                                """
+                            }
+                        } catch (e) { echo "⚠️ Git tag 推送失败: ${e.message}" }
+                    }
+                    echo "✅ V9 流水线闭环执行成功 🎉"
+                }
+            }
+        }
+
+    }
+
+        post {
+            success {
+                script { H.notifyDingTalk('SUCCESS', "✅ v${env.SEMVER} 发布成功 | ${params.DEPLOY_ENV} | ${params.DEPLOY_STRATEGY}") }
+            }
+            unstable {
+                script { H.notifyDingTalk('UNSTABLE', "⚠️ v${env.SEMVER} UNSTABLE | 请检查报告") }
+            }
+            failure {
+                script {
+                    H.notifyDingTalk('FAILURE', "❌ v${env.SEMVER} 构建失败 | ${params.DEPLOY_ENV}")
+                    // 只在真正失败（非 UNSTABLE）时才执行回滚
+                    if (!params.DRY_RUN && env.DEPLOY_STARTED == 'true' && currentBuild.result != 'UNSTABLE') {
+                        sleep(params.ROLLBACK_TIMEOUT.toInteger())
+                        H.autoRollback(params.DEPLOY_STRATEGY, env.APP_NAME,
+                                    params.K8S_NAMESPACE, env.PREV_DEPLOY_REV,
+                                    env.PREV_SVC_SELECTOR)
+                    }
+                }
+            }
+            always {
+                archiveArtifacts allowEmptyArchive: true, artifacts: 'target/*.jar,meta/**,reports/**', fingerprint: true
+                sh '''
+                    docker rm -f temp-trivy-fs temp-sonar-scan temp-maven-test \
+                    temp-jkvideo-jest temp-jkvideo-web temp-db-check temp-dep-diff \
+                    temp-flyway temp-maven-build temp-curl-uploader temp-minio-up \
+                    temp-infra-check temp-loki-check temp-airflow-trigger temp-trino-check \
+                    2>/dev/null || true
+                '''
+                cleanWs(deleteDirs: true, disableDeferredWipeout: true, notFailBuild: true)
+            }
+        }
+}

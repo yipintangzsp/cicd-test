@@ -1,0 +1,338 @@
+{
+  "generated_at": "2026-06-05T14:06:37.397Z",
+  "source": "/Users/zhangsir/code/gitLab",
+  "destination": "/Users/zhangsir/code/gitHub/github-cicd-test",
+  "backup_root": "gitlab-tested-v3-v16",
+  "version_range": "v3-v16",
+  "active_github_entrypoint": "Jenkinsfile defaults to Jenkinsfile-intelligence-v16",
+  "protected_active_files": [
+    "Jenkinsfile-expert-v11",
+    "ci/v13_generate_governance.mjs"
+  ],
+  "entries": [
+    {
+      "file": "Jenkinsfile",
+      "gitlab_sha256": "4ea79a42e968f9c37c53af878703e0d53973a20735f3123ce46816fc914efe00",
+      "active_github_sha256": "e7d70f763c5bd09c800c590021fdc51876a7da3032a69eb359577e2f4ad111f9",
+      "backup_sha256": "4ea79a42e968f9c37c53af878703e0d53973a20735f3123ce46816fc914efe00",
+      "backup_matches_gitlab": true,
+      "active_matches_gitlab": false,
+      "conflict_policy": "GitLab tested source preserved under gitlab-tested-v3-v16; active GitHub file kept to avoid pipeline regression"
+    },
+    {
+      "file": "Jenkinsfile-router",
+      "gitlab_sha256": "2a8f44aa3497bf9259e73f0e94568e38edf288b27eb36b74f49a39ad6b9cbc5a",
+      "active_github_sha256": "2a8f44aa3497bf9259e73f0e94568e38edf288b27eb36b74f49a39ad6b9cbc5a",
+      "backup_sha256": "2a8f44aa3497bf9259e73f0e94568e38edf288b27eb36b74f49a39ad6b9cbc5a",
+      "backup_matches_gitlab": true,
+      "active_matches_gitlab": true,
+      "conflict_policy": "active file already matches GitLab tested source"
+    },
+    {
+      "file": "Jenkinsfile-expert-v3",
+      "gitlab_sha256": "2f437f1b4ab3998dd84d165909df180d54a9b7975856b2be7487b8dbff26acf5",
+      "active_github_sha256": "2f437f1b4ab3998dd84d165909df180d54a9b7975856b2be7487b8dbff26acf5",
+      "backup_sha256": "2f437f1b4ab3998dd84d165909df180d54a9b7975856b2be7487b8dbff26acf5",
+      "backup_matches_gitlab": true,
+      "active_matches_gitlab": true,
+      "conflict_policy": "active file already matches GitLab tested source"
+    },
+    {
+      "file": "Jenkinsfile-expert-v4",
+      "gitlab_sha256": "44a5cb4302404aa8b2410958195d73b2af9cfc04a3dbe9def36a2943460088f4",
+      "active_github_sha256": "44a5cb4302404aa8b2410958195d73b2af9cfc04a3dbe9def36a2943460088f4",
+      "backup_sha256": "44a5cb4302404aa8b2410958195d73b2af9cfc04a3dbe9def36a2943460088f4",
+      "backup_matches_gitlab": true,
+      "active_matches_gitlab": true,
+      "conflict_policy": "active file already matches GitLab tested source"
+    },
+    {
+      "file": "Jenkinsfile-expert-v5",
+      "gitlab_sha256": "821aa62591107a35579a447d54a39ea86c4bb345ad5908b04666b1f813fa20f9",
+      "active_github_sha256": "821aa62591107a35579a447d54a39ea86c4bb345ad5908b04666b1f813fa20f9",
+      "backup_sha256": "821aa62591107a35579a447d54a39ea86c4bb345ad5908b04666b1f813fa20f9",
+      "backup_matches_gitlab": true,
+      "active_matches_gitlab": true,
+      "conflict_policy": "active file already matches GitLab tested source"
+    },
+    {
+      "file": "Jenkinsfile-expert-v6",
+      "gitlab_sha256": "9f23c2412c8b977efc3f1277c939ae51b49947fc8480e30b051ed47a57e5c527",
+      "active_github_sha256": "9f23c2412c8b977efc3f1277c939ae51b49947fc8480e30b051ed47a57e5c527",
+      "backup_sha256": "9f23c2412c8b977efc3f1277c939ae51b49947fc8480e30b051ed47a57e5c527",
+      "backup_matches_gitlab": true,
+      "active_matches_gitlab": true,
+      "conflict_policy": "active file already matches GitLab tested source"
+    },
+    {
+      "file": "Jenkinsfile-expert-v7",
+      "gitlab_sha256": "84cfe3400bf21e5c7290663fa4997a22ef57dc637e404e54f98b6a890c61b1d7",
+      "active_github_sha256": "84cfe3400bf21e5c7290663fa4997a22ef57dc637e404e54f98b6a890c61b1d7",
+      "backup_sha256": "84cfe3400bf21e5c7290663fa4997a22ef57dc637e404e54f98b6a890c61b1d7",
+      "backup_matches_gitlab": true,
+      "active_matches_gitlab": true,
+      "conflict_policy": "active file already matches GitLab tested source"
+    },
+    {
+      "file": "Jenkinsfile-expert-v8",
+      "gitlab_sha256": "a8f5e6a4752972631429411a33a5d7f7dc20ce9dca0a346375a1809012af0689",
+      "active_github_sha256": "a8f5e6a4752972631429411a33a5d7f7dc20ce9dca0a346375a1809012af0689",
+      "backup_sha256": "a8f5e6a4752972631429411a33a5d7f7dc20ce9dca0a346375a1809012af0689",
+      "backup_matches_gitlab": true,
+      "active_matches_gitlab": true,
+      "conflict_policy": "active file already matches GitLab tested source"
+    },
+    {
+      "file": "Jenkinsfile-v8-jkvideo",
+      "gitlab_sha256": "6c748ec43bcd7459e0ff86173a1a6d74c52da26ebadcc9f7b97106f05fab84b9",
+      "active_github_sha256": "6c748ec43bcd7459e0ff86173a1a6d74c52da26ebadcc9f7b97106f05fab84b9",
+      "backup_sha256": "6c748ec43bcd7459e0ff86173a1a6d74c52da26ebadcc9f7b97106f05fab84b9",
+      "backup_matches_gitlab": true,
+      "active_matches_gitlab": true,
+      "conflict_policy": "active file already matches GitLab tested source"
+    },
+    {
+      "file": "Jenkinsfile-expert-v9",
+      "gitlab_sha256": "375c1a9aea34d56c61287b8459cae1f040005dcf9f2b90e6e666cbe6f71306e5",
+      "active_github_sha256": "375c1a9aea34d56c61287b8459cae1f040005dcf9f2b90e6e666cbe6f71306e5",
+      "backup_sha256": "375c1a9aea34d56c61287b8459cae1f040005dcf9f2b90e6e666cbe6f71306e5",
+      "backup_matches_gitlab": true,
+      "active_matches_gitlab": true,
+      "conflict_policy": "active file already matches GitLab tested source"
+    },
+    {
+      "file": "Jenkinsfile-expert-v10",
+      "gitlab_sha256": "ce3b1157556fe87acedea0715931f1aca1a9e82e704216516864e4f59a9fbe70",
+      "active_github_sha256": "ce3b1157556fe87acedea0715931f1aca1a9e82e704216516864e4f59a9fbe70",
+      "backup_sha256": "ce3b1157556fe87acedea0715931f1aca1a9e82e704216516864e4f59a9fbe70",
+      "backup_matches_gitlab": true,
+      "active_matches_gitlab": true,
+      "conflict_policy": "active file already matches GitLab tested source"
+    },
+    {
+      "file": "Jenkinsfile-expert-v11",
+      "gitlab_sha256": "8c35284343d6bd2daa004b8133676ca15f92ba2a465e7b28cf0c68266749cf01",
+      "active_github_sha256": "66e801032ad5a783ba31ee0d68f9cff7e671ad22ca7a3a31e53cd6adafaa2cab",
+      "backup_sha256": "8c35284343d6bd2daa004b8133676ca15f92ba2a465e7b28cf0c68266749cf01",
+      "backup_matches_gitlab": true,
+      "active_matches_gitlab": false,
+      "conflict_policy": "GitLab tested source preserved under gitlab-tested-v3-v16; active GitHub file kept to avoid pipeline regression"
+    },
+    {
+      "file": "Jenkinsfile-expert-v12",
+      "gitlab_sha256": "d6cdb3575836ba65fd324e56749c377a5f9e3bcb390dee33c7f6097cccff57b8",
+      "active_github_sha256": "d6cdb3575836ba65fd324e56749c377a5f9e3bcb390dee33c7f6097cccff57b8",
+      "backup_sha256": "d6cdb3575836ba65fd324e56749c377a5f9e3bcb390dee33c7f6097cccff57b8",
+      "backup_matches_gitlab": true,
+      "active_matches_gitlab": true,
+      "conflict_policy": "active file already matches GitLab tested source"
+    },
+    {
+      "file": "Jenkinsfile-expert-v13",
+      "gitlab_sha256": "f08cbb5e7ff41edf7729226ad35532356b5e554e10e759359f9fdcfd09f5634e",
+      "active_github_sha256": "f08cbb5e7ff41edf7729226ad35532356b5e554e10e759359f9fdcfd09f5634e",
+      "backup_sha256": "f08cbb5e7ff41edf7729226ad35532356b5e554e10e759359f9fdcfd09f5634e",
+      "backup_matches_gitlab": true,
+      "active_matches_gitlab": true,
+      "conflict_policy": "active file already matches GitLab tested source"
+    },
+    {
+      "file": "Jenkinsfile-epoch-v13",
+      "gitlab_sha256": "f08cbb5e7ff41edf7729226ad35532356b5e554e10e759359f9fdcfd09f5634e",
+      "active_github_sha256": "f08cbb5e7ff41edf7729226ad35532356b5e554e10e759359f9fdcfd09f5634e",
+      "backup_sha256": "f08cbb5e7ff41edf7729226ad35532356b5e554e10e759359f9fdcfd09f5634e",
+      "backup_matches_gitlab": true,
+      "active_matches_gitlab": true,
+      "conflict_policy": "active file already matches GitLab tested source"
+    },
+    {
+      "file": "Jenkinsfile-intelligence-v14",
+      "gitlab_sha256": "aa9406b6967a8da7ca7c13ac616d140bfa7520b7022939e27c202765a940012b",
+      "active_github_sha256": "aa9406b6967a8da7ca7c13ac616d140bfa7520b7022939e27c202765a940012b",
+      "backup_sha256": "aa9406b6967a8da7ca7c13ac616d140bfa7520b7022939e27c202765a940012b",
+      "backup_matches_gitlab": true,
+      "active_matches_gitlab": true,
+      "conflict_policy": "active file already matches GitLab tested source"
+    },
+    {
+      "file": "Jenkinsfile-intelligence-v15",
+      "gitlab_sha256": "8fb1fa53e00440b803b083b2a74dbf2a5f5f5bda9eccf0a5a7bc656330c1923b",
+      "active_github_sha256": "8fb1fa53e00440b803b083b2a74dbf2a5f5f5bda9eccf0a5a7bc656330c1923b",
+      "backup_sha256": "8fb1fa53e00440b803b083b2a74dbf2a5f5f5bda9eccf0a5a7bc656330c1923b",
+      "backup_matches_gitlab": true,
+      "active_matches_gitlab": true,
+      "conflict_policy": "active file already matches GitLab tested source"
+    },
+    {
+      "file": "Jenkinsfile-intelligence-v16",
+      "gitlab_sha256": "8dee88912c227ec7423fcde69ec15755645677b1cc26d07334d04f60efa7bc28",
+      "active_github_sha256": "8dee88912c227ec7423fcde69ec15755645677b1cc26d07334d04f60efa7bc28",
+      "backup_sha256": "8dee88912c227ec7423fcde69ec15755645677b1cc26d07334d04f60efa7bc28",
+      "backup_matches_gitlab": true,
+      "active_matches_gitlab": true,
+      "conflict_policy": "active file already matches GitLab tested source"
+    },
+    {
+      "file": "jenkins-v9-helpers.groovy",
+      "gitlab_sha256": "93a704652f0965a88f5f0c8752d58de1796303a4671bf681ad58652f65731eb8",
+      "active_github_sha256": "93a704652f0965a88f5f0c8752d58de1796303a4671bf681ad58652f65731eb8",
+      "backup_sha256": "93a704652f0965a88f5f0c8752d58de1796303a4671bf681ad58652f65731eb8",
+      "backup_matches_gitlab": true,
+      "active_matches_gitlab": true,
+      "conflict_policy": "active file already matches GitLab tested source"
+    },
+    {
+      "file": "jenkins-v10-helpers.groovy",
+      "gitlab_sha256": "fe08009002605d88e5e5fbcd9f0aea0d9b3369e2335fc42e3a3fa1ceddd29cd1",
+      "active_github_sha256": "fe08009002605d88e5e5fbcd9f0aea0d9b3369e2335fc42e3a3fa1ceddd29cd1",
+      "backup_sha256": "fe08009002605d88e5e5fbcd9f0aea0d9b3369e2335fc42e3a3fa1ceddd29cd1",
+      "backup_matches_gitlab": true,
+      "active_matches_gitlab": true,
+      "conflict_policy": "active file already matches GitLab tested source"
+    },
+    {
+      "file": "jenkins-v10-evidence.groovy",
+      "gitlab_sha256": "b4d07afae01057c8241fb2b0ba5277ea4bfd75fca01bac96ea1e2833a29648a2",
+      "active_github_sha256": "b4d07afae01057c8241fb2b0ba5277ea4bfd75fca01bac96ea1e2833a29648a2",
+      "backup_sha256": "b4d07afae01057c8241fb2b0ba5277ea4bfd75fca01bac96ea1e2833a29648a2",
+      "backup_matches_gitlab": true,
+      "active_matches_gitlab": true,
+      "conflict_policy": "active file already matches GitLab tested source"
+    },
+    {
+      "file": "jenkins-v11-evidence.groovy",
+      "gitlab_sha256": "9061010d8497250d3527a9d4cbe80c0a9ae51d663f8763a411bdaabb07ac2730",
+      "active_github_sha256": "9061010d8497250d3527a9d4cbe80c0a9ae51d663f8763a411bdaabb07ac2730",
+      "backup_sha256": "9061010d8497250d3527a9d4cbe80c0a9ae51d663f8763a411bdaabb07ac2730",
+      "backup_matches_gitlab": true,
+      "active_matches_gitlab": true,
+      "conflict_policy": "active file already matches GitLab tested source"
+    },
+    {
+      "file": "jenkins-v12-evidence.groovy",
+      "gitlab_sha256": "760f618cdb44881e917eff4df0db978031097dfb5f76879e9201d8933c4732dc",
+      "active_github_sha256": "760f618cdb44881e917eff4df0db978031097dfb5f76879e9201d8933c4732dc",
+      "backup_sha256": "760f618cdb44881e917eff4df0db978031097dfb5f76879e9201d8933c4732dc",
+      "backup_matches_gitlab": true,
+      "active_matches_gitlab": true,
+      "conflict_policy": "active file already matches GitLab tested source"
+    },
+    {
+      "file": "jenkins-v13-governance.groovy",
+      "gitlab_sha256": "9a79894662c53cf50373e66e0c8cf193d8e6828f0a7b7c1e05db5457bbaf59b8",
+      "active_github_sha256": "9a79894662c53cf50373e66e0c8cf193d8e6828f0a7b7c1e05db5457bbaf59b8",
+      "backup_sha256": "9a79894662c53cf50373e66e0c8cf193d8e6828f0a7b7c1e05db5457bbaf59b8",
+      "backup_matches_gitlab": true,
+      "active_matches_gitlab": true,
+      "conflict_policy": "active file already matches GitLab tested source"
+    },
+    {
+      "file": "ci/v10_generate_evidence.mjs",
+      "gitlab_sha256": "1fd4c1a07c521d6da1b6cbaf5b9a86bcccc01dfeb2b421d67c936a8672410e6b",
+      "active_github_sha256": "1fd4c1a07c521d6da1b6cbaf5b9a86bcccc01dfeb2b421d67c936a8672410e6b",
+      "backup_sha256": "1fd4c1a07c521d6da1b6cbaf5b9a86bcccc01dfeb2b421d67c936a8672410e6b",
+      "backup_matches_gitlab": true,
+      "active_matches_gitlab": true,
+      "conflict_policy": "active file already matches GitLab tested source"
+    },
+    {
+      "file": "ci/v10_generate_evidence.py",
+      "gitlab_sha256": "a269fee7429852bfd4dbda74b915bb360803768ec12dd8f31539ce3eb0ff8f45",
+      "active_github_sha256": "a269fee7429852bfd4dbda74b915bb360803768ec12dd8f31539ce3eb0ff8f45",
+      "backup_sha256": "a269fee7429852bfd4dbda74b915bb360803768ec12dd8f31539ce3eb0ff8f45",
+      "backup_matches_gitlab": true,
+      "active_matches_gitlab": true,
+      "conflict_policy": "active file already matches GitLab tested source"
+    },
+    {
+      "file": "ci/v11_generate_evidence.mjs",
+      "gitlab_sha256": "9eff9a3d5e4d9188a4cbe05d6f87ecfe5035d59896c28a3f3651f56d56dc510a",
+      "active_github_sha256": "9eff9a3d5e4d9188a4cbe05d6f87ecfe5035d59896c28a3f3651f56d56dc510a",
+      "backup_sha256": "9eff9a3d5e4d9188a4cbe05d6f87ecfe5035d59896c28a3f3651f56d56dc510a",
+      "backup_matches_gitlab": true,
+      "active_matches_gitlab": true,
+      "conflict_policy": "active file already matches GitLab tested source"
+    },
+    {
+      "file": "ci/v12_addon_checks.sh",
+      "gitlab_sha256": "c3f923115bbf1301e518e1a7f55ba59bf4accfa66c11e5ffbcf5c3d862a20157",
+      "active_github_sha256": "c3f923115bbf1301e518e1a7f55ba59bf4accfa66c11e5ffbcf5c3d862a20157",
+      "backup_sha256": "c3f923115bbf1301e518e1a7f55ba59bf4accfa66c11e5ffbcf5c3d862a20157",
+      "backup_matches_gitlab": true,
+      "active_matches_gitlab": true,
+      "conflict_policy": "active file already matches GitLab tested source"
+    },
+    {
+      "file": "ci/v12_generate_evidence.mjs",
+      "gitlab_sha256": "34be2d0c01f86d03a6cb86925fc0f8d98dffc10e13fa7605f69091642c610c05",
+      "active_github_sha256": "34be2d0c01f86d03a6cb86925fc0f8d98dffc10e13fa7605f69091642c610c05",
+      "backup_sha256": "34be2d0c01f86d03a6cb86925fc0f8d98dffc10e13fa7605f69091642c610c05",
+      "backup_matches_gitlab": true,
+      "active_matches_gitlab": true,
+      "conflict_policy": "active file already matches GitLab tested source"
+    },
+    {
+      "file": "ci/v13_addon_checks.sh",
+      "gitlab_sha256": "6c85684d90d48a3a456d2397ba1d971adf14be35add0b4aef63b7c342f9fac59",
+      "active_github_sha256": "6c85684d90d48a3a456d2397ba1d971adf14be35add0b4aef63b7c342f9fac59",
+      "backup_sha256": "6c85684d90d48a3a456d2397ba1d971adf14be35add0b4aef63b7c342f9fac59",
+      "backup_matches_gitlab": true,
+      "active_matches_gitlab": true,
+      "conflict_policy": "active file already matches GitLab tested source"
+    },
+    {
+      "file": "ci/v13_generate_governance.mjs",
+      "gitlab_sha256": "5a251616ec54e37800b973414c48bef5972b34cb63c6236198ea0a7084c58ac6",
+      "active_github_sha256": "55fdf56e1a065b7ebb7e809e33f9019c1a6e04d79313f9f6659e7631c71d995b",
+      "backup_sha256": "5a251616ec54e37800b973414c48bef5972b34cb63c6236198ea0a7084c58ac6",
+      "backup_matches_gitlab": true,
+      "active_matches_gitlab": false,
+      "conflict_policy": "GitLab tested source preserved under gitlab-tested-v3-v16; active GitHub file kept to avoid pipeline regression"
+    },
+    {
+      "file": "ci/v14_intelligence.mjs",
+      "gitlab_sha256": "3f0d632302ab45209f328fb2599ee423f09c61589eea92f2f8ef4ef84cd5d7e7",
+      "active_github_sha256": "3f0d632302ab45209f328fb2599ee423f09c61589eea92f2f8ef4ef84cd5d7e7",
+      "backup_sha256": "3f0d632302ab45209f328fb2599ee423f09c61589eea92f2f8ef4ef84cd5d7e7",
+      "backup_matches_gitlab": true,
+      "active_matches_gitlab": true,
+      "conflict_policy": "active file already matches GitLab tested source"
+    },
+    {
+      "file": "ci/v15_intelligence.mjs",
+      "gitlab_sha256": "e088da4a2723fa2ad376417d0004c17c6fc59db3238ac7f27d999ad3e9311df8",
+      "active_github_sha256": "e088da4a2723fa2ad376417d0004c17c6fc59db3238ac7f27d999ad3e9311df8",
+      "backup_sha256": "e088da4a2723fa2ad376417d0004c17c6fc59db3238ac7f27d999ad3e9311df8",
+      "backup_matches_gitlab": true,
+      "active_matches_gitlab": true,
+      "conflict_policy": "active file already matches GitLab tested source"
+    },
+    {
+      "file": "ci/v16_cloud_dataops.mjs",
+      "gitlab_sha256": "a80209934f3e566a98abddaebbeb4756e19480e6a97c072a7b904025c99b8029",
+      "active_github_sha256": "a80209934f3e566a98abddaebbeb4756e19480e6a97c072a7b904025c99b8029",
+      "backup_sha256": "a80209934f3e566a98abddaebbeb4756e19480e6a97c072a7b904025c99b8029",
+      "backup_matches_gitlab": true,
+      "active_matches_gitlab": true,
+      "conflict_policy": "active file already matches GitLab tested source"
+    },
+    {
+      "file": "devops-scripts/v12-harbor-image-backup-20260525.md",
+      "gitlab_sha256": "22c427bf03cbc421ef4108921942d01729b63ed30c474059e944270e7f28d3c3",
+      "active_github_sha256": "22c427bf03cbc421ef4108921942d01729b63ed30c474059e944270e7f28d3c3",
+      "backup_sha256": "22c427bf03cbc421ef4108921942d01729b63ed30c474059e944270e7f28d3c3",
+      "backup_matches_gitlab": true,
+      "active_matches_gitlab": true,
+      "conflict_policy": "active file already matches GitLab tested source"
+    },
+    {
+      "file": "devops-scripts/v12-harbor-image-backup.sh",
+      "gitlab_sha256": "e2f9222f90d07264470e129d1402815df93a26ac3e320b68959fb2869088fd24",
+      "active_github_sha256": "e2f9222f90d07264470e129d1402815df93a26ac3e320b68959fb2869088fd24",
+      "backup_sha256": "e2f9222f90d07264470e129d1402815df93a26ac3e320b68959fb2869088fd24",
+      "backup_matches_gitlab": true,
+      "active_matches_gitlab": true,
+      "conflict_policy": "active file already matches GitLab tested source"
+    }
+  ]
+}

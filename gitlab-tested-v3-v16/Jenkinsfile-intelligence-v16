@@ -1,0 +1,675 @@
+// Jenkinsfile-intelligence-v16: Cloud DataOps role-fit epoch.
+// V16 maps the live DevOps/data platform to the 2026 cloud data analytics
+// operations job description: modular cloud systems, CI/CD IaC, collaboration,
+// infrastructure risk closure, Java/Python and English handoff readiness.
+
+def v16Domains = [
+    ['cloud-modular-system', '模块化云数据分析系统'],
+    ['cicd-iac', 'CI/CD 云 IaC'],
+    ['etl-collaboration', 'ETL 与分析协作'],
+    ['infra-risk', '基础设施漏洞风险'],
+    ['public-cloud', 'GCP/AWS/Azure/国内云适配'],
+    ['devops-jenkins', 'Jenkins DevOps'],
+    ['java-python', 'Java Python 工程'],
+    ['english-workspace', '英文工作环境'],
+    ['observability', '监控日志图表'],
+    ['security-quality', '安全质量门禁'],
+    ['bigdata-runtime', 'Spark/Flink/Kafka/Airflow'],
+    ['analytics-serving', 'Trino/Superset/MinIO'],
+    ['service-owner-reporting', '服务业主汇报'],
+    ['software-coverage', '平台现有软件全覆盖']
+]
+
+def v16Controls = [
+    '模块边界', '接口契约', '部署证据', '探针证据',
+    '风险识别', '预防措施', '纠正措施', 'Owner 汇报',
+    'IaC 计划', 'CI/CD 门禁', '数据新鲜度', '指标字典',
+    '回滚路径', '英文交付', 'Java/Python 证明', '验收闭环'
+]
+
+def v16Stages = []
+def v16Counter = 1
+v16Domains.each { domain ->
+    v16Controls.eachWithIndex { control, idx ->
+        def no = String.format('%03d', v16Counter++)
+        v16Stages << ["16.${no} ${domain[1]} - ${control}", "${domain[0]}-${String.format('%02d', idx + 1)}"]
+    }
+}
+
+def p(String name, Object fallbackValue) {
+    return params.containsKey(name) && params[name] != null ? params[name] : fallbackValue
+}
+
+def refreshWorkspace = {
+    if (env.JOB_NAME == 'github-cicd-test') {
+        sh '''
+            set -eux
+            git --git-dir=/var/jenkins_home/github-cache/cicd-test.git remote set-url origin https://github.com/yipintangzsp/cicd-test.git
+            timeout 60 git --git-dir=/var/jenkins_home/github-cache/cicd-test.git fetch --prune origin +refs/heads/main:refs/heads/main || echo "GitHub cache refresh skipped in V16 workspace reload; using existing local cache"
+            git clone /var/jenkins_home/github-cache/cicd-test.git .
+            git checkout -f main
+            git remote set-url origin https://github.com/yipintangzsp/cicd-test.git
+        '''
+    } else {
+        checkout scm
+    }
+}
+
+def runV16 = {
+    timeout(time: 240, unit: 'MINUTES') {
+        timestamps {
+            try {
+                stage('V16.00 继承 V15 Foundation') {
+                    if ("${p('V16_RUN_V15_FOUNDATION', false)}" == 'true') {
+                        load 'Jenkinsfile-intelligence-v15'
+                    } else {
+                        echo 'V16_RUN_V15_FOUNDATION=false: inherit live V15 portal/platform evidence without rerunning full V15.'
+                    }
+                }
+
+                stage('V16.01 重新载入源码') {
+                    deleteDir()
+                    refreshWorkspace()
+                    sh 'mkdir -p meta reports/v16-baseline reports/v16-role-matrix reports/v16-portal reports/v16-observability-import reports/v16-stage-manifest'
+                    env.SCRIPT_NAME = 'Jenkinsfile-intelligence-v16'
+                    env.APP_NAME = 'cloud-dataops-v16'
+                    env.REGISTRY = '127.0.0.1:30050'
+                    env.V16_PORTAL_NAMESPACE = "${p('V16_PORTAL_NAMESPACE', p('V15_PORTAL_NAMESPACE', p('V14_PORTAL_NAMESPACE', 'ns-apps')))}"
+                    env.V16_PORTAL_SERVICE_NAME = "${p('V16_PORTAL_SERVICE_NAME', p('V15_PORTAL_SERVICE_NAME', 'platform-era-v13-portal'))}"
+                    env.V16_PORTAL_APP_LABEL = "${p('V16_PORTAL_APP_LABEL', 'platform-era-v13-portal')}"
+                    env.V16_PORTAL_NODEPORT = "${p('V16_PORTAL_NODEPORT', p('V15_PORTAL_NODEPORT', '30089'))}"
+                    env.V16_PROMOTE_LEGACY_PUBLIC_NODEPORT = "${p('V16_PROMOTE_LEGACY_PUBLIC_NODEPORT', true)}"
+                    env.V16_LEGACY_PUBLIC_SERVICE_NAME = "${p('V16_LEGACY_PUBLIC_SERVICE_NAME', p('V15_LEGACY_PUBLIC_SERVICE_NAME', 'hello-app-v10-portal'))}"
+                    env.V16_LEGACY_PUBLIC_NODEPORT = "${p('V16_LEGACY_PUBLIC_NODEPORT', p('V15_LEGACY_PUBLIC_NODEPORT', '30087'))}"
+                    env.V16_KIBANA_INDEX_PREFIX = "${p('V16_KIBANA_INDEX_PREFIX', 'jenkins-v16-cloud-dataops')}"
+                    env.V16_GRAFANA_DASHBOARD_TITLE = "${p('V16_GRAFANA_DASHBOARD_TITLE', 'ZhangLab V16 Cloud DataOps Role Matrix')}"
+                    env.V16_IMPORT_OBSERVABILITY_ASSETS = "${p('V16_IMPORT_OBSERVABILITY_ASSETS', true)}"
+                    env.V16_PUBLISH_PORTAL = "${p('V16_PUBLISH_PORTAL', true)}"
+                    env.V16_STRICT_RISK_GATE = "${p('V16_STRICT_RISK_GATE', false)}"
+                    env.V16_RUN_V15_FOUNDATION = "${p('V16_RUN_V15_FOUNDATION', false)}"
+                    env.CLOUDFLARE_PUBLIC_HOSTNAME = "${p('CLOUDFLARE_PUBLIC_HOSTNAME', 'platform.heil.ccwu.cc')}"
+                    env.GIT_COMMIT_ID = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
+                    env.GIT_BRANCH_NAME = sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim()
+                    env.GIT_AUTHOR = sh(script: 'git log -1 --pretty=%an', returnStdout: true).trim()
+                    env.GIT_COMMIT_MSG = sh(script: 'git log -1 --pretty=%s', returnStdout: true).trim()
+                    env.SEMVER = "0.0.${env.BUILD_NUMBER}"
+                    currentBuild.displayName = "#${env.BUILD_NUMBER} v16 ${env.SEMVER}"
+                    currentBuild.description = "${env.GIT_AUTHOR} | ${env.GIT_COMMIT_MSG.take(60)}"
+                    sh '''
+node - <<'NODE'
+const fs = require('fs');
+const info = {
+  script: process.env.SCRIPT_NAME,
+  build: process.env.BUILD_NUMBER,
+  semver: process.env.SEMVER,
+  commit: process.env.GIT_COMMIT_ID,
+  branch: process.env.GIT_BRANCH_NAME,
+  portal_url: `http://192.168.1.58:${process.env.V16_PORTAL_NODEPORT}/`,
+  public_url: `https://${process.env.CLOUDFLARE_PUBLIC_HOSTNAME}/`,
+  inherits: 'Jenkinsfile-intelligence-v15',
+  role_source: '2026 cloud data analytics / CI-CD IaC operations screenshot'
+};
+fs.writeFileSync('meta/v16-build-info.json', JSON.stringify(info, null, 2) + '\\n');
+NODE
+                    '''
+                }
+
+                stage('V16.02 捕获 V15 Fresh Baseline') {
+                    sh '''
+                        set -eu
+                        if curl -fsS --max-time 20 "https://${CLOUDFLARE_PUBLIC_HOSTNAME}/evidence.json" -o reports/v16-baseline/v15-evidence.json; then
+                          :
+                        elif curl -fsS --max-time 20 "http://192.168.1.58:${V16_PORTAL_NODEPORT}/evidence.json" -o reports/v16-baseline/v15-evidence.json; then
+                          :
+                        else
+                          printf '{"summary":{"collectionWarning":"v15 baseline unavailable"}}\\n' > reports/v16-baseline/v15-evidence.json
+                        fi
+                        node -e "JSON.parse(require('fs').readFileSync('reports/v16-baseline/v15-evidence.json','utf8'))"
+                    '''
+                }
+
+                stage('V16.03 采集实时平台资产') {
+                    sh '''
+                        set -eu
+                        capture_json() {
+                          title="$1"; output="$2"; shift 2
+                          tmp="${output}.tmp"
+                          for attempt in 1 2 3 4; do
+                            if timeout 70s "$@" -o json > "$tmp" 2>"${tmp}.err"; then
+                              mv "$tmp" "$output"
+                              rm -f "${tmp}.err"
+                              return 0
+                            fi
+                            printf '[%s] %s attempt=%s failed: %s\\n' "$(date -u +%FT%TZ)" "$title" "$attempt" "$(cat "${tmp}.err" 2>/dev/null)" >> meta/v16-cluster-capture-errors.log
+                            sleep $((attempt * 5))
+                          done
+                          printf '{"apiVersion":"v1","items":[],"captureWarning":"%s capture failed after retries"}\\n' "$title" > "$output"
+                          return 0
+                        }
+                        capture_json pods meta/v16-pods-live.json kubectl get pods -A
+                        capture_json services meta/v16-services-live.json kubectl get svc -A
+                        capture_json endpoints meta/v16-endpoints-live.json kubectl get endpoints -A
+                        capture_json workloads meta/v16-workloads-live.json kubectl get deploy,statefulset,daemonset -A
+                        capture_json nodes meta/v16-nodes-live.json kubectl get nodes
+                        capture_json events meta/v16-events-live.json kubectl get events -A --sort-by=.lastTimestamp
+                        capture_json metricsapiservice meta/v16-metrics-apiservice.json kubectl get apiservice v1beta1.metrics.k8s.io
+                        capture_json pvc meta/v16-pvc-live.json kubectl get pvc -A
+                        capture_json pv meta/v16-pv-live.json kubectl get pv
+                        capture_json namespaces meta/v16-namespaces-live.json kubectl get ns
+                        capture_json ingress meta/v16-ingress-live.json kubectl get ingress -A
+                        capture_json configmaps meta/v16-configmaps-live.json kubectl get cm -A
+                        capture_json serviceaccounts meta/v16-serviceaccounts-live.json kubectl get sa -A
+                        capture_json storageclasses meta/v16-storageclasses-live.json kubectl get storageclass
+                        capture_json argocdapps meta/v16-argocd-applications-live.json kubectl get applications.argoproj.io -A
+                        capture_json servicemonitors meta/v16-service-monitors-live.json kubectl get servicemonitor,podmonitor -A
+                        capture_json sparkapplications meta/v16-spark-applications-live.json kubectl get sparkapplications.sparkoperator.k8s.io -A
+                        capture_json flinkdeployments meta/v16-flink-deployments-live.json kubectl get flinkdeployments.flink.apache.org -A
+                        kubectl version -o json > meta/v16-kubernetes-version.json 2>&1 || true
+                        kubectl top nodes --no-headers > meta/v16-node-top.txt 2>&1 || true
+                        kubectl top pods -A --no-headers > meta/v16-pod-top.txt 2>&1 || true
+                        helm list -A -o json > meta/v16-helm-releases.json 2>meta/v16-helm-releases.err || printf '[]\n' > meta/v16-helm-releases.json
+                        docker images --format '{{json .}}' > meta/v16-docker-images.ndjson 2>meta/v16-docker-images.err || true
+                        crictl images -o json > meta/v16-crictl-images.json 2>meta/v16-crictl-images.err || printf '{"images":[]}\n' > meta/v16-crictl-images.json
+                        ctr -n k8s.io images list -q > meta/v16-containerd-images.txt 2>meta/v16-containerd-images.err || true
+                    '''
+                }
+
+                stage('V16.04 岗位阶段计划生成') {
+                    def fixedStages = [
+                        'V16.00 继承 V15 Foundation',
+                        'V16.01 重新载入源码',
+                        'V16.02 捕获 V15 Fresh Baseline',
+                        'V16.03 采集实时平台资产',
+                        'V16.04 岗位阶段计划生成'
+                    ]
+                    writeFile file: 'reports/v16-stage-plan.txt', text: (fixedStages + v16Stages.collect { it[0] } + [
+                        'V16.90 生成 Cloud DataOps 岗位矩阵资产',
+                        'V16.91 V16 资产质量门禁',
+                        'V16.92 导入 Grafana/Kibana/Elasticsearch',
+                        'V16.93 发布 V16 Cloud DataOps 门户',
+                        'V16.93.5 提升公网入口到 V16',
+                        'V16.94 V16 成果验证',
+                        'V16.95 最终结论与归档'
+                    ]).join('\n') + '\n'
+                    sh 'nl -ba reports/v16-stage-plan.txt | tee reports/v16-stage-manifest/stage-count.txt'
+                }
+
+                v16Stages.each { item ->
+                    stage(item[0]) {
+                        env.V16_STAGE_KEY = item[1]
+                        env.V16_STAGE_TITLE = item[0]
+                        sh '''
+                            set -eu
+                            node ci/v16_cloud_dataops.mjs check "$V16_STAGE_KEY" "$V16_STAGE_TITLE"
+                        '''
+                    }
+                }
+
+                stage('V16.90 生成 Cloud DataOps 岗位矩阵资产') {
+                    sh '''
+                        set -eu
+                        node ci/v16_cloud_dataops.mjs build
+                    '''
+                }
+
+                stage('V16.91 V16 资产质量门禁') {
+                    sh '''
+                        set -eu
+                        node ci/v16_cloud_dataops.mjs lint
+                        test -s reports/v16-role-matrix/evidence.json
+                        test -s reports/v16-requirement-matrix.json
+                        test -s reports/v16-cloud-modules.json
+                        test -s reports/v16-software-utilization.json
+                        test -s reports/v16-infra-risk-register.json
+                        test -s reports/v16-observability.ndjson
+                        test -s reports/v16-grafana-dashboard.json
+                        test -s reports/v16-kibana-dashboard.ndjson
+                        test -s reports/v16-portal/index.html
+                        ACTUAL=$(wc -l < reports/v16-stage-plan.txt | tr -d ' ')
+                        [ "$ACTUAL" -ge 230 ] || { echo "v16 stage count too low: $ACTUAL"; exit 1; }
+                        P1='kubectl[[:space:]]+delete'
+                        P2='docker[[:space:]]+system[[:space:]]+prune'
+                        P3='rm[[:space:]]+-rf'
+                        P4='helm[[:space:]]+uninstall'
+                        P5='git[[:space:]]+reset[[:space:]]+--hard'
+                        grep -RInE "$P1|$P2|$P3|$P4|$P5" Jenkinsfile-intelligence-v16 ci/v16_cloud_dataops.mjs Jenkinsfile-router > reports/v16-role-matrix/destructive-scan.txt || true
+                        [ ! -s reports/v16-role-matrix/destructive-scan.txt ] || { cat reports/v16-role-matrix/destructive-scan.txt; exit 1; }
+                    '''
+                }
+
+                stage('V16.92 导入 Grafana/Kibana/Elasticsearch') {
+                    sh '''
+                        set -eu
+                        mkdir -p reports/v16-observability-import
+                        STRICT="${V16_STRICT_RISK_GATE:-false}"
+                        IMPORT_WARN_LOG="reports/v16-observability-import/import.warnings.log"
+                        : > "$IMPORT_WARN_LOG"
+                        warn_import() {
+                          printf '[%s] %s\n' "$(date -u +%FT%TZ)" "$*" | tee -a "$IMPORT_WARN_LOG" >&2
+                        }
+                        fail_or_warn_import() {
+                          warn_import "$*"
+                          if [ "$STRICT" = "true" ]; then
+                            exit 1
+                          fi
+                        }
+                        if [ "${V16_IMPORT_OBSERVABILITY_ASSETS}" != "true" ]; then
+                          echo "V16_IMPORT_OBSERVABILITY_ASSETS=false" | tee reports/v16-observability-import/import.disabled
+                          exit 0
+                        fi
+                        resolve_cluster_url() {
+                          url="$1"
+                          case "$url" in http://*.svc.cluster.local*|https://*.svc.cluster.local*) ;; *) printf '%s' "$url"; return 0 ;; esac
+                          scheme="${url%%://*}"; rest="${url#*://}"; hostport="${rest%%/*}"; path="${rest#"$hostport"}"; [ "$path" != "$rest" ] || path="/"
+                          host="${hostport%%:*}"; portpart="${hostport#"$host"}"; svc="${host%%.*}"; remainder="${host#*.}"; ns="${remainder%%.*}"
+                          ip="$(command kubectl -n "$ns" get svc "$svc" -o jsonpath='{.spec.clusterIP}' 2>/dev/null || true)"
+                          if [ -n "$ip" ] && [ "$ip" != "None" ]; then printf '%s://%s%s%s' "$scheme" "$ip" "$portpart" "$path"; else printf '%s' "$url"; fi
+                        }
+                        ES_URL="$(resolve_cluster_url "${ELASTICSEARCH_URL:-http://elasticsearch.default.svc.cluster.local:9200}")"
+                        KB_URL="$(resolve_cluster_url "${KIBANA_INTERNAL_URL:-http://kibana-service.default.svc.cluster.local:5601}")"
+                        GRAFANA_URL="$(resolve_cluster_url "${GRAFANA_URL:-http://kube-stack-grafana.monitoring.svc.cluster.local}")"
+                        GRAFANA_USER="${GRAFANA_USER:-admin}"
+                        GRAFANA_PASSWORD="${GRAFANA_PASSWORD:-zsp359742}"
+                        INDEX_DATE="$(date -u +%Y.%m.%d)"
+                        INDEX_NAME="${V16_KIBANA_INDEX_PREFIX}-${INDEX_DATE}"
+                        export INDEX_NAME
+                        cat > reports/v16-observability-import/mapping.json <<'JSON'
+{
+  "mappings": {
+    "properties": {
+      "@timestamp": { "type": "date" },
+      "pipeline_version": { "type": "keyword" },
+      "type": { "type": "keyword" },
+      "build": { "type": "keyword" },
+      "job": { "type": "keyword" },
+      "category": { "type": "keyword" },
+      "status": { "type": "keyword" },
+      "layer": { "type": "keyword" },
+      "role": { "type": "keyword" },
+      "key": { "type": "keyword" },
+      "domain": { "type": "keyword" },
+      "message": { "type": "text", "fields": { "keyword": { "type": "keyword", "ignore_above": 256 } } },
+      "prevention": { "type": "text" },
+      "correction": { "type": "text" },
+      "proof": { "type": "text" },
+      "score": { "type": "double" },
+      "requirement_fit_score": { "type": "double" },
+      "data_system_score": { "type": "double" },
+      "cloud_iac_score": { "type": "double" },
+      "risk_score": { "type": "double" },
+      "collaboration_score": { "type": "double" },
+      "software_utilization_score": { "type": "double" },
+      "complexity_lift_percent": { "type": "double" },
+      "severity": { "type": "double" },
+      "pod_count": { "type": "long" },
+      "ready_pods": { "type": "long" },
+      "restart_total": { "type": "long" },
+      "services": { "type": "long" },
+      "workloads": { "type": "long" },
+      "artifact_count": { "type": "long" },
+      "module_component_count": { "type": "long" },
+      "observed": { "type": "boolean" }
+    }
+  }
+}
+JSON
+                        curl -fsS -X PUT "${ES_URL}/${INDEX_NAME}" -H 'Content-Type: application/json' --data-binary @reports/v16-observability-import/mapping.json -o reports/v16-observability-import/create-index.json || true
+                        node - <<'NODE'
+const fs = require('fs');
+const crypto = require('crypto');
+const index = process.env.INDEX_NAME;
+const input = fs.readFileSync('reports/v16-observability.ndjson','utf8').split('\\n').filter(Boolean);
+const out = [];
+input.forEach((line, i) => {
+  const doc = JSON.parse(line);
+  const source = [doc.pipeline_version, doc.build, doc.type, doc.category, doc.role, doc.key, i].join('|');
+  const id = crypto.createHash('sha1').update(source).digest('hex');
+  out.push(JSON.stringify({ index: { _index: index, _id: id } }));
+  out.push(JSON.stringify(doc));
+});
+fs.writeFileSync('reports/v16-observability-import/bulk.ndjson', out.join('\\n') + '\\n');
+console.log('v16_bulk_events=' + input.length);
+NODE
+                        if curl -fsS -X POST "${ES_URL}/_bulk?refresh=true" -H 'Content-Type: application/x-ndjson' --data-binary @reports/v16-observability-import/bulk.ndjson -o reports/v16-observability-import/bulk-result.json; then
+                          if ! node -e "const r=JSON.parse(require('fs').readFileSync('reports/v16-observability-import/bulk-result.json','utf8')); if(r.errors){console.error(JSON.stringify(r.items.filter(i=>(i.index||{}).error).slice(0,5),null,2)); process.exit(1)} console.log('bulk_took_ms='+r.took)"; then
+                            fail_or_warn_import "Elasticsearch bulk import returned item errors; continuing because V16_STRICT_RISK_GATE is not true"
+                          fi
+                          curl -fsS "${ES_URL}/${INDEX_NAME}/_count" -o reports/v16-observability-import/count.json || fail_or_warn_import "Elasticsearch count query failed for ${INDEX_NAME}"
+                        else
+                          fail_or_warn_import "Elasticsearch bulk import request failed for ${ES_URL}; Grafana/Kibana assets will still be archived"
+                        fi
+                        cat > reports/v16-observability-import/data-view.json <<EOF2
+{"attributes":{"title":"${V16_KIBANA_INDEX_PREFIX}-*","timeFieldName":"@timestamp"}}
+EOF2
+                        curl -fsS -X POST "${KB_URL}/api/saved_objects/index-pattern/${V16_KIBANA_INDEX_PREFIX}?overwrite=true" -H 'kbn-xsrf: true' -H 'Content-Type: application/json' --data-binary @reports/v16-observability-import/data-view.json -o reports/v16-observability-import/kibana-data-view.json || fail_or_warn_import "Kibana data view import failed at ${KB_URL}"
+                        curl -fsS -X POST "${KB_URL}/api/saved_objects/_import?overwrite=true" -H 'kbn-xsrf: true' -F file=@reports/v16-kibana-dashboard.ndjson -o reports/v16-observability-import/kibana-saved-object-import.json || fail_or_warn_import "Kibana saved object import failed at ${KB_URL}"
+                        cat > reports/v16-observability-import/grafana-v16-datasource.json <<EOF2
+{"name":"Jenkins V16 Cloud DataOps Elasticsearch","uid":"jenkins-v16-cloud-dataops-es","type":"elasticsearch","access":"proxy","url":"${ES_URL}","basicAuth":false,"isDefault":false,"jsonData":{"esVersion":"8.0.0","index":"${V16_KIBANA_INDEX_PREFIX}-*","timeField":"@timestamp","logMessageField":"message","logLevelField":"severity"}}
+EOF2
+                        if curl -fsS "${GRAFANA_URL%/}/api/datasources/uid/jenkins-v16-cloud-dataops-es" -u "${GRAFANA_USER}:${GRAFANA_PASSWORD}" -o reports/v16-observability-import/grafana-v16-datasource-existing.json; then
+                          curl -fsS -X PUT "${GRAFANA_URL%/}/api/datasources/uid/jenkins-v16-cloud-dataops-es" -u "${GRAFANA_USER}:${GRAFANA_PASSWORD}" -H 'Content-Type: application/json' --data-binary @reports/v16-observability-import/grafana-v16-datasource.json -o reports/v16-observability-import/grafana-v16-datasource-result.json || fail_or_warn_import "Grafana datasource update failed at ${GRAFANA_URL}"
+                        else
+                          curl -fsS -X POST "${GRAFANA_URL%/}/api/datasources" -u "${GRAFANA_USER}:${GRAFANA_PASSWORD}" -H 'Content-Type: application/json' --data-binary @reports/v16-observability-import/grafana-v16-datasource.json -o reports/v16-observability-import/grafana-v16-datasource-result.json || fail_or_warn_import "Grafana datasource create failed at ${GRAFANA_URL}"
+                        fi
+                        node - <<'NODE'
+const fs = require('fs');
+const dashboard = JSON.parse(fs.readFileSync('reports/v16-grafana-dashboard.json','utf8'));
+dashboard.id = null;
+dashboard.version = Number(dashboard.version || 1) + 1;
+fs.writeFileSync('reports/v16-observability-import/grafana-import-payload.json', JSON.stringify({ dashboard, folderUid: '', overwrite: true, message: 'Jenkins V16 Cloud DataOps role import build ' + (process.env.BUILD_NUMBER || 'unknown') }, null, 2));
+NODE
+                        if curl -fsS -X POST "${GRAFANA_URL%/}/api/dashboards/db" -u "${GRAFANA_USER}:${GRAFANA_PASSWORD}" -H 'Content-Type: application/json' --data-binary @reports/v16-observability-import/grafana-import-payload.json -o reports/v16-observability-import/grafana-dashboard-import.json; then
+                          node -e "const r=JSON.parse(require('fs').readFileSync('reports/v16-observability-import/grafana-dashboard-import.json','utf8')); if(!r.uid||!r.url){console.error(JSON.stringify(r,null,2)); process.exit(1)} console.log('grafana_dashboard_uid='+r.uid); console.log('grafana_dashboard_url='+r.url)" || fail_or_warn_import "Grafana dashboard import response did not include uid/url"
+                        else
+                          fail_or_warn_import "Grafana dashboard import failed at ${GRAFANA_URL}; dashboard JSON remains archived"
+                        fi
+                    '''
+                }
+
+                stage('V16.93 发布 V16 Cloud DataOps 门户') {
+                    if (env.V16_PUBLISH_PORTAL == 'true') {
+                        sh '''
+                            set -eu
+                            STRICT="${V16_STRICT_RISK_GATE:-false}"
+                            PORTAL_WARN_LOG="reports/v16-portal/publish.warnings.log"
+                            : > "$PORTAL_WARN_LOG"
+                            warn_portal() {
+                              printf '[%s] %s\n' "$(date -u +%FT%TZ)" "$*" | tee -a "$PORTAL_WARN_LOG" >&2
+                            }
+                            fail_or_warn_portal() {
+                              warn_portal "$*"
+                              if [ "$STRICT" = "true" ]; then
+                                exit 1
+                              fi
+                            }
+                            cat > reports/v16-portal/Dockerfile <<'DOCKERFILE'
+FROM 127.0.0.1:30050/library/nginx-alpine:1.29.7-alpine
+RUN rm -f /etc/nginx/conf.d/default.conf
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY index.html evidence.json /usr/share/nginx/html/
+EXPOSE 80
+DOCKERFILE
+                            cat > reports/v16-portal/nginx.conf <<'NGINX'
+server {
+  listen 80;
+  root /usr/share/nginx/html;
+  index index.html;
+  add_header X-Cloud-DataOps "v16" always;
+  add_header Cache-Control "no-store" always;
+  location / { try_files $uri $uri/ /index.html; }
+  location = /evidence.json { default_type application/json; }
+}
+NGINX
+                            IMAGE="127.0.0.1:30050/cloud-dataops-v16:${GIT_COMMIT_ID}"
+                            if docker build --network none --label app.name=cloud-dataops-v16 --label pipeline.version=v16 --label git.commit=${GIT_COMMIT_ID} -t "$IMAGE" reports/v16-portal; then
+                              docker push "$IMAGE" || fail_or_warn_portal "Harbor push failed for ${IMAGE}; Kubernetes apply will still try local IfNotPresent image"
+                            else
+                              fail_or_warn_portal "Docker build failed for V16 portal image ${IMAGE}; skipping Kubernetes publish and keeping generated portal artifacts"
+                              exit 0
+                            fi
+                            cat > reports/v16-portal/k8s.yaml <<EOF2
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ${V16_PORTAL_SERVICE_NAME}
+  namespace: ${V16_PORTAL_NAMESPACE}
+  labels:
+    app.kubernetes.io/name: ${V16_PORTAL_APP_LABEL}
+    app.kubernetes.io/part-of: platform-intelligence
+    app.kubernetes.io/component: evidence-portal
+    pipeline-version: v16
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ${V16_PORTAL_APP_LABEL}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ${V16_PORTAL_APP_LABEL}
+        app.kubernetes.io/part-of: platform-intelligence
+        app.kubernetes.io/component: evidence-portal
+        pipeline-version: v16
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      containers:
+        - name: portal
+          image: ${IMAGE}
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 120m
+              memory: 112Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ${V16_PORTAL_SERVICE_NAME}
+  namespace: ${V16_PORTAL_NAMESPACE}
+  labels:
+    app.kubernetes.io/name: ${V16_PORTAL_APP_LABEL}
+    app.kubernetes.io/part-of: platform-intelligence
+    pipeline-version: v16
+spec:
+  type: NodePort
+  selector:
+    app.kubernetes.io/name: ${V16_PORTAL_APP_LABEL}
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+      nodePort: ${V16_PORTAL_NODEPORT}
+EOF2
+                            if timeout 25s kubectl get --raw=/readyz >/tmp/v16-k8s-readyz.txt 2>&1; then
+                              cp /tmp/v16-k8s-readyz.txt reports/v16-portal/k8s-readyz.txt
+                            else
+                              cp /tmp/v16-k8s-readyz.txt reports/v16-portal/k8s-readyz.failed.txt || true
+                              echo "k8s readyz timed out; still attempting apply with retries" | tee reports/v16-portal/k8s-readyz.warning
+                            fi
+                            APPLY_OK=false
+                            for attempt in 1 2 3 4 5 6; do
+                              if timeout 90s kubectl apply --validate=false -f reports/v16-portal/k8s.yaml; then
+                                APPLY_OK=true
+                                break
+                              fi
+                              echo "kubectl apply failed, retry attempt=${attempt}" >&2
+                              sleep $((attempt * 8))
+                            done
+                            if [ "$APPLY_OK" = "true" ]; then
+                              kubectl -n ${V16_PORTAL_NAMESPACE} rollout status deploy/${V16_PORTAL_SERVICE_NAME} --timeout=420s || fail_or_warn_portal "V16 portal rollout did not complete"
+                            else
+                              fail_or_warn_portal "V16 portal Kubernetes apply failed after retries"
+                            fi
+                        '''
+                    } else {
+                        sh "echo 'V16_PUBLISH_PORTAL=false' > reports/v16-portal/publish.disabled"
+                    }
+                }
+
+                stage('V16.93.5 提升公网入口到 V16') {
+                    sh '''
+                        set -eu
+                        mkdir -p reports/v16-portal
+                        PROMOTE="${V16_PROMOTE_LEGACY_PUBLIC_NODEPORT:-true}"
+                        NS="${V16_PORTAL_NAMESPACE:-ns-apps}"
+                        LEGACY_SVC="${V16_LEGACY_PUBLIC_SERVICE_NAME:-hello-app-v10-portal}"
+                        LEGACY_NODEPORT="${V16_LEGACY_PUBLIC_NODEPORT:-30087}"
+                        TARGET_APP="${V16_PORTAL_APP_LABEL:-platform-era-v13-portal}"
+                        if [ "$PROMOTE" != "true" ]; then
+                          echo "V16_PROMOTE_LEGACY_PUBLIC_NODEPORT=false" | tee reports/v16-portal/public-promotion.disabled
+                          exit 0
+                        fi
+                        timeout 30s kubectl -n "$NS" get svc "$LEGACY_SVC" -o json > reports/v16-portal/public-promotion-before.json
+                        node - <<'NODE'
+const fs = require('fs');
+const service = JSON.parse(fs.readFileSync('reports/v16-portal/public-promotion-before.json', 'utf8'));
+const hadSelector = Object.prototype.hasOwnProperty.call(service.spec || {}, 'selector');
+const oldSelector = service.spec?.selector || {};
+const targetSelector = { 'app.kubernetes.io/name': process.env.V16_PORTAL_APP_LABEL || 'platform-era-v13-portal' };
+const patch = [{ op: hadSelector ? 'replace' : 'add', path: '/spec/selector', value: targetSelector }];
+const rollback = hadSelector
+  ? [{ op: 'replace', path: '/spec/selector', value: oldSelector }]
+  : [{ op: 'remove', path: '/spec/selector' }];
+const summary = {
+  namespace: process.env.V16_PORTAL_NAMESPACE || 'ns-apps',
+  service: process.env.V16_LEGACY_PUBLIC_SERVICE_NAME || 'hello-app-v10-portal',
+  nodePort: process.env.V16_LEGACY_PUBLIC_NODEPORT || '30087',
+  oldSelector,
+  targetSelector,
+  reason: 'Promote existing Cloudflare-facing NodePort service to the V16 Cloud DataOps portal without changing Cloudflare DNS/tunnel settings.',
+  rollbackCommand: `kubectl -n ${process.env.V16_PORTAL_NAMESPACE || 'ns-apps'} patch svc ${process.env.V16_LEGACY_PUBLIC_SERVICE_NAME || 'hello-app-v10-portal'} --type json -p '${JSON.stringify(rollback)}'`
+};
+fs.writeFileSync('reports/v16-portal/public-promotion-patch.json', JSON.stringify(patch));
+fs.writeFileSync('reports/v16-portal/public-promotion-rollback.json', JSON.stringify(rollback));
+fs.writeFileSync('reports/v16-portal/public-promotion-plan.json', JSON.stringify(summary, null, 2) + '\\n');
+console.log('public_promotion_target=' + JSON.stringify(targetSelector));
+console.log('public_promotion_rollback=' + summary.rollbackCommand);
+NODE
+                        kubectl -n "$NS" patch svc "$LEGACY_SVC" --type json -p "$(cat reports/v16-portal/public-promotion-patch.json)"
+                        timeout 30s kubectl -n "$NS" get svc "$LEGACY_SVC" -o json > reports/v16-portal/public-promotion-after.json
+                        for attempt in $(seq 1 30); do
+                          if curl -fsS --max-time 10 "http://192.168.1.58:${LEGACY_NODEPORT}/evidence.json" -o reports/v16-portal/legacy-public-nodeport-evidence.json &&
+                             node -e "const e=JSON.parse(require('fs').readFileSync('reports/v16-portal/legacy-public-nodeport-evidence.json','utf8')); const v=e.summary?.pipeline_version||e.summary?.pipelineVersion; if(v !== 'v16'){console.error('legacy_public_nodeport_version='+v); process.exit(1)} console.log('legacy_public_nodeport_version='+v);"; then
+                            echo "legacy_public_nodeport_promoted=true" | tee reports/v16-portal/public-promotion-result.txt
+                            exit 0
+                          fi
+                          sleep 3
+                        done
+                        echo "legacy public NodePort did not return V16 after selector promotion" | tee reports/v16-portal/public-promotion.failed
+                        cat reports/v16-portal/public-promotion-plan.json
+                        exit 1
+                    '''
+                }
+
+                stage('V16.94 V16 成果验证') {
+                    sh '''
+                        set -eu
+                        STRICT="${V16_STRICT_RISK_GATE:-false}"
+                        VERIFY_WARN_LOG="reports/v16-portal/verify.warnings.log"
+                        : > "$VERIFY_WARN_LOG"
+                        warn_verify() {
+                          printf '[%s] %s\n' "$(date -u +%FT%TZ)" "$*" | tee -a "$VERIFY_WARN_LOG" >&2
+                        }
+                        fail_or_warn_verify() {
+                          warn_verify "$*"
+                          if [ "$STRICT" = "true" ]; then
+                            exit 1
+                          fi
+                        }
+                        require_marker() {
+                          file="$1"; marker="$2"; label="$3"
+                          grep -q "$marker" "$file" || fail_or_warn_verify "${label} missing marker ${marker}"
+                        }
+                        wait_for_marker() {
+                          url="$1"; marker="$2"; output="$3"
+                          for attempt in $(seq 1 30); do
+                            if curl -fsS --max-time 15 "$url" -o "$output" && grep -q "$marker" "$output"; then
+                              return 0
+                            fi
+                            sleep 3
+                          done
+                          echo "missing marker ${marker} at ${url}" >&2
+                          test -s "$output" && tail -c 500 "$output" >&2 || true
+                          return 1
+                        }
+                        if wait_for_marker "http://192.168.1.58:${V16_PORTAL_NODEPORT}/" 'Cloud DataOps <span>Role Matrix' reports/v16-portal/internal.verify.html; then
+                          require_marker reports/v16-portal/internal.verify.html 'v16-cloud-dataops-role-matrix-20260605' 'internal NodePort'
+                          require_marker reports/v16-portal/internal.verify.html '岗位职责与岗位要求映射' 'internal NodePort'
+                          require_marker reports/v16-portal/internal.verify.html 'AudioContext' 'internal NodePort'
+                          require_marker reports/v16-portal/internal.verify.html 'Sound ON' 'internal NodePort'
+                          require_marker reports/v16-portal/internal.verify.html 'sound-rev-v3' 'internal NodePort'
+                          wait_for_marker "http://192.168.1.58:${V16_PORTAL_NODEPORT}/evidence.json" '"pipeline_version": "v16"' reports/v16-portal/evidence.verify.json || fail_or_warn_verify "internal NodePort evidence.json did not expose v16"
+                        else
+                          fail_or_warn_verify "internal NodePort verification failed; checking Cloudflare public route"
+                        fi
+                        if wait_for_marker "https://${CLOUDFLARE_PUBLIC_HOSTNAME}/" 'Cloud DataOps <span>Role Matrix' reports/v16-portal/public.verify.html; then
+                          require_marker reports/v16-portal/public.verify.html 'v16-cloud-dataops-role-matrix-20260605' 'public hostname'
+                          require_marker reports/v16-portal/public.verify.html '岗位职责与岗位要求映射' 'public hostname'
+                          require_marker reports/v16-portal/public.verify.html 'AudioContext' 'public hostname'
+                          require_marker reports/v16-portal/public.verify.html 'Sound ON' 'public hostname'
+                          require_marker reports/v16-portal/public.verify.html 'sound-rev-v3' 'public hostname'
+                          wait_for_marker "https://${CLOUDFLARE_PUBLIC_HOSTNAME}/evidence.json" '"pipeline_version": "v16"' reports/v16-portal/public-evidence.verify.json || fail_or_warn_verify "public evidence.json did not expose v16"
+                        else
+                          fail_or_warn_verify "public hostname verification failed inside Jenkins; checking local Cloudflare origin bridge"
+                          if wait_for_marker "http://127.0.0.1:${V16_LEGACY_PUBLIC_NODEPORT}/" 'v16-cloud-dataops-role-matrix-20260605' reports/v16-portal/public-origin-bridge.verify.html; then
+                            require_marker reports/v16-portal/public-origin-bridge.verify.html 'sound-rev-v3' 'local Cloudflare origin bridge'
+                          else
+                            fail_or_warn_verify "local Cloudflare origin bridge verification failed"
+                          fi
+                        fi
+                        timeout 20s kubectl get deploy,svc -n ${V16_PORTAL_NAMESPACE} -l app.kubernetes.io/name=${V16_PORTAL_APP_LABEL} -o wide | tee reports/v16-portal/k8s-live.txt || true
+                        curl -fsS --max-time 20 "https://${CLOUDFLARE_PUBLIC_HOSTNAME}/evidence.json" -o reports/v16-portal/public-current-evidence.json || true
+                        node - <<'NODE'
+const fs = require('fs');
+function readJson(file) {
+  try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return null; }
+}
+const generated = readJson('reports/v16-portal/evidence.json') || {};
+const publicEvidence = readJson('reports/v16-portal/public-current-evidence.json') || {};
+const generatedSummary = generated.summary || {};
+const publicSummary = publicEvidence.summary || {};
+const generatedVersion = generatedSummary.pipeline_version || generatedSummary.pipelineVersion || 'unknown';
+const publicVersion = publicSummary.pipeline_version || publicSummary.pipelineVersion || 'unknown';
+const diagnosis = {
+  publicHost: process.env.CLOUDFLARE_PUBLIC_HOSTNAME,
+  internalNodePort: process.env.V16_PORTAL_NODEPORT,
+  generatedVersion,
+  generatedBuild: generatedSummary.build || 'unknown',
+  publicVersion,
+  publicBuild: publicSummary.build || 'unknown',
+  state: generatedVersion === publicVersion ? 'aligned' : 'public-route-stale',
+  action: generatedVersion === publicVersion ? 'No public route action needed.' : 'Public hostname still serves an older portal. Check Cloudflare tunnel/origin service selector.'
+};
+fs.writeFileSync('reports/v16-portal/public-route-diagnosis.json', JSON.stringify(diagnosis, null, 2) + '\\n');
+console.log('public_route_state=' + diagnosis.state);
+console.log('public_route_generated=' + diagnosis.generatedVersion + '#' + diagnosis.generatedBuild);
+console.log('public_route_current=' + diagnosis.publicVersion + '#' + diagnosis.publicBuild);
+NODE
+                    '''
+                }
+
+                stage('V16.95 最终结论与归档') {
+                    sh '''
+                        set -eu
+                        cat > reports/v16-release-verdict.json <<EOF2
+{
+  "pipeline": "Jenkinsfile-intelligence-v16",
+  "inherits": "Jenkinsfile-intelligence-v15",
+  "build": "${BUILD_NUMBER}",
+  "commit": "${GIT_COMMIT_ID}",
+  "internal_portal": "http://192.168.1.58:${V16_PORTAL_NODEPORT}/",
+  "public_portal": "https://${CLOUDFLARE_PUBLIC_HOSTNAME}/",
+  "grafana_uid": "zhanglab-v16-cloud-dataops-role",
+  "kibana_index_prefix": "${V16_KIBANA_INDEX_PREFIX}",
+  "stage_plan_count": "$(wc -l < reports/v16-stage-plan.txt | tr -d ' ')",
+  "role_source": "2026 cloud data analytics CI/CD IaC operations job description",
+  "mutation_policy": "no data deletion, no pvc deletion, no backup deletion, no cluster reset"
+}
+EOF2
+                        cat reports/v16-release-verdict.json
+                    '''
+                }
+            } catch (err) {
+                currentBuild.result = 'FAILURE'
+                throw err
+            } finally {
+                archiveArtifacts allowEmptyArchive: true, artifacts: 'meta/**,reports/**', fingerprint: true
+                cleanWs(deleteDirs: true, disableDeferredWipeout: true, notFailBuild: true)
+            }
+        }
+    }
+}
+
+if (env.NODE_NAME) {
+    runV16()
+} else {
+    node {
+        runV16()
+    }
+}

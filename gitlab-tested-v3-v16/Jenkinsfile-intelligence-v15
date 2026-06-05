@@ -1,0 +1,856 @@
+// Jenkinsfile-intelligence-v15: autonomous data operations epoch.
+// V15 inherits V14 evidence, then adds autonomous operation scoring,
+// FinOps/capacity modeling, incident simulation, and deeper data-platform proof.
+
+def v15Stages = [
+    ['15.01 安全边界继承确认', 'guardrail-inheritance'],
+    ['15.02 只读证据模式确认', 'guardrail-readonly'],
+    ['15.03 V14 基线差异捕获', 'baseline-v14-delta'],
+    ['15.04 成功不等于可用校验', 'delivery-proof'],
+    ['15.05 Jenkins 构建证据闭环', 'jenkins-proof'],
+    ['15.06 GitLab/GitHub 版本矩阵', 'source-version-matrix'],
+    ['15.07 ArgoCD 同步智能评分', 'argocd-sync-intelligence'],
+    ['15.08 Harbor 镜像恢复索引', 'harbor-image-recovery'],
+    ['15.09 镜像标签明确性审计', 'image-tag-policy'],
+    ['15.10 Cloudflare 入口体验评分', 'cloudflare-experience'],
+    ['15.11 前端动态交互证据', 'frontend-dynamic-proof'],
+    ['15.12 服务星图拓扑证据', 'service-constellation'],
+    ['15.13 风险热力图证据', 'risk-heatmap'],
+    ['15.14 恢复剧本索引', 'recovery-playbook-index'],
+    ['15.15 PVC/PV 持久化证明', 'recovery-pvc-pv'],
+    ['15.16 Secret 脱敏清单证明', 'secret-redaction-proof'],
+    ['15.17 备份年龄与范围证明', 'backup-age-scope'],
+    ['15.18 干跑恢复路径证明', 'restore-dryrun-proof'],
+    ['15.19 回滚范围证明', 'rollback-scope-proof'],
+    ['15.20 Worker 节点保护评分', 'worker-node-protection'],
+    ['15.21 Node Ready 趋势证据', 'node-ready-trend'],
+    ['15.22 Node 资源水位证据', 'node-resource-watermark'],
+    ['15.22.1 Metrics API 升级门禁', 'metrics-api-upgrade-gate'],
+    ['15.22.2 节点版本偏差门禁', 'node-version-skew-gate'],
+    ['15.22.3 Probe Timeout 压力门禁', 'probe-timeout-upgrade-gate'],
+    ['15.22.4 DevOps 控制面压力量化', 'devops-control-plane-pressure'],
+    ['15.22.5 Worker 空闲容量画像', 'worker-idle-capacity-profile'],
+    ['15.22.6 无状态迁移候选清单', 'stateless-migration-candidates'],
+    ['15.22.7 Metrics Scrape 稳定性', 'metrics-scrape-stability'],
+    ['15.23 Pod 调度分布评分', 'pod-placement-score'],
+    ['15.24 Pod 重启压力评分', 'pod-restart-pressure'],
+    ['15.25 Endpoint 缺口评分', 'endpoint-gap-score'],
+    ['15.26 Service 探针闭环评分', 'service-probe-closure'],
+    ['15.27 Namespace 健康分层', 'namespace-health-layer'],
+    ['15.28 Deployment 可用副本证明', 'deployment-availability'],
+    ['15.29 StatefulSet 风险证明', 'statefulset-risk-proof'],
+    ['15.30 DaemonSet 覆盖证明', 'daemonset-coverage'],
+    ['15.31 Spark Operator 智能评分', 'spark-operator-score'],
+    ['15.32 Spark Webhook 证据深化', 'spark-webhook-depth'],
+    ['15.33 Kafka Broker 链路评分', 'kafka-broker-link'],
+    ['15.34 Kafka UI 可用性证据', 'kafka-ui-proof'],
+    ['15.35 Flink JobManager 任务面板', 'flink-jobmanager-proof'],
+    ['15.36 Flink Slot 容量评分', 'flink-slot-score'],
+    ['15.37 Airflow DAG 可见性评分', 'airflow-dag-visibility'],
+    ['15.38 Trino 查询面风险评分', 'trino-query-score'],
+    ['15.39 Superset BI 展示评分', 'superset-bi-score'],
+    ['15.40 MinIO 对象湖证明', 'minio-object-lake'],
+    ['15.40.1 大数据应用画像生成', 'bigdata-application-profile'],
+    ['15.40.2 Spark/Flink/Kafka 链路证据', 'spark-flink-kafka-lineage'],
+    ['15.40.3 Airflow/Trino/Superset 分析链路', 'airflow-trino-superset-lineage'],
+    ['15.40.4 MinIO 对象湖读写链路', 'minio-object-lake-flow'],
+    ['15.40.5 Data Lab 前端操作证据', 'data-lab-interaction-proof'],
+    ['15.41 MySQL/PostgreSQL 数据层证据', 'database-layer-proof'],
+    ['15.42 Elasticsearch 写入闭环', 'elastic-write-closure'],
+    ['15.43 Kibana Data View 新鲜度', 'kibana-data-freshness'],
+    ['15.44 Kibana 图表对象评分', 'kibana-object-score'],
+    ['15.45 Grafana 数据源闭环', 'grafana-datasource-closure'],
+    ['15.46 Grafana 图表密度评分', 'grafana-panel-density'],
+    ['15.47 Prometheus Target 覆盖', 'prometheus-target-coverage'],
+    ['15.48 Loki 日志就绪证据', 'loki-readiness-proof'],
+    ['15.49 Jaeger Trace 入口证据', 'jaeger-trace-proof'],
+    ['15.50 OpenTelemetry 入口证明', 'otel-ingress-proof'],
+    ['15.51 Zabbix 展示计划证据', 'zabbix-display-proof'],
+    ['15.52 Jenkins 日志到 Kafka 闭环', 'jenkins-log-kafka-closure'],
+    ['15.53 Filebeat 到 Elasticsearch 闭环', 'filebeat-es-closure'],
+    ['15.54 钉钉通知证据评分', 'dingtalk-notify-proof'],
+    ['15.55 SonarQube 质量门禁评分', 'sonarqube-quality-score'],
+    ['15.56 Trivy 安全扫描覆盖', 'trivy-security-coverage'],
+    ['15.57 Cosign 签名准备度', 'cosign-readiness'],
+    ['15.58 Helm 渲染准备度', 'helm-render-readiness'],
+    ['15.59 Terraform 规划准备度', 'terraform-plan-readiness'],
+    ['15.60 Kubeconform Schema 准备度', 'kubeconform-schema-readiness'],
+    ['15.61 招聘高频能力覆盖评分', 'market-capability-score'],
+    ['15.62 平台闲置服务识别', 'idle-service-intelligence'],
+    ['15.63 服务 Owner 映射', 'service-owner-map'],
+    ['15.64 SLO 错误预算智能化', 'slo-budget-intelligence'],
+    ['15.65 容量扩容窗口建议', 'capacity-window-recommendation'],
+    ['15.66 发布风险评分', 'release-risk-score'],
+    ['15.67 变更影响面评分', 'change-impact-score'],
+    ['15.68 回归检测矩阵', 'regression-detection-matrix'],
+    ['15.69 观测延迟评分', 'observability-lag-score'],
+    ['15.70 前端证据点击路径', 'portal-click-path'],
+    ['15.71 服务钻取路径', 'service-drilldown-path'],
+    ['15.72 风险钻取路径', 'risk-drilldown-path'],
+    ['15.73 恢复钻取路径', 'recovery-drilldown-path'],
+    ['15.74 数据链路钻取路径', 'data-lineage-drilldown'],
+    ['15.75 v14/v15 对比摘要', 'v14-v15-comparison'],
+    ['15.76 平台智能总分', 'platform-intelligence-score'],
+    ['15.77 风险优先队列', 'risk-priority-queue'],
+    ['15.78 恢复优先队列', 'recovery-priority-queue'],
+    ['15.79 证据完整性评分', 'evidence-completeness-score'],
+    ['15.80 图表复杂度评分', 'chart-complexity-score'],
+    ['15.81 前端绚丽程度证据', 'visual-richness-proof'],
+    ['15.82 长期稳定性建议', 'long-term-stability-advice'],
+    ['15.83 非破坏性最终审计', 'final-safety-audit'],
+    ['15.84 V16 候选路线图', 'v16-candidate-roadmap'],
+    ['15.85 自治运维总览模型', 'autonomous-ops-overview'],
+    ['15.86 事故响应模拟矩阵', 'incident-simulation-matrix'],
+    ['15.87 SLO 错误预算燃尽预测', 'slo-burn-forecast'],
+    ['15.88 FinOps 成本压力画像', 'finops-cost-pressure'],
+    ['15.89 容量水位七日预测', 'capacity-seven-day-forecast'],
+    ['15.90 Spark 批任务 SLA 证据', 'spark-batch-sla-proof'],
+    ['15.91 Spark Shuffle 压力评分', 'spark-shuffle-pressure'],
+    ['15.92 Flink Checkpoint 健康度', 'flink-checkpoint-health'],
+    ['15.93 Flink Savepoint 恢复路径', 'flink-savepoint-recovery'],
+    ['15.94 Kafka Consumer Lag 画像', 'kafka-consumer-lag-profile'],
+    ['15.95 Kafka Topic 保留策略证据', 'kafka-topic-retention-proof'],
+    ['15.96 Airflow DAG 失败恢复图谱', 'airflow-dag-recovery-map'],
+    ['15.97 Trino 查询防护与队列', 'trino-query-guardrail'],
+    ['15.98 Superset 语义层覆盖', 'superset-semantic-coverage'],
+    ['15.99 MinIO 生命周期与冷数据', 'minio-lifecycle-cold-data'],
+    ['15.100 数据质量规则覆盖', 'data-quality-rule-coverage'],
+    ['15.101 数据血缘断点识别', 'data-lineage-breakpoint'],
+    ['15.102 数据新鲜度 SLA', 'data-freshness-sla'],
+    ['15.103 Jenkins 发布可信评分', 'jenkins-release-trust-score'],
+    ['15.104 GitLab/GitHub 双源一致性', 'dual-source-consistency'],
+    ['15.105 ArgoCD 漂移自治分流', 'argocd-drift-autopilot'],
+    ['15.106 Harbor 镜像热备优先级', 'harbor-hot-standby-priority'],
+    ['15.107 Prometheus 告警噪声压缩', 'prometheus-alert-noise-reduction'],
+    ['15.108 Grafana 通用看板收敛', 'grafana-universal-dashboard-convergence'],
+    ['15.109 Kibana 通用图表收敛', 'kibana-universal-visual-convergence'],
+    ['15.110 日志延迟与缺口分析', 'log-lag-gap-analysis'],
+    ['15.111 OpenTelemetry Trace 采样策略', 'otel-trace-sampling-strategy'],
+    ['15.112 Zabbix 服务资产映射', 'zabbix-asset-map'],
+    ['15.113 DingTalk 告警分级路由', 'dingtalk-alert-routing'],
+    ['15.114 安全漏洞风险重排', 'security-risk-reranking'],
+    ['15.115 供应链签名覆盖预测', 'supply-chain-signature-forecast'],
+    ['15.116 配置漂移快照比对', 'config-drift-snapshot-diff'],
+    ['15.117 非破坏性混沌演练设计', 'readonly-chaos-rehearsal'],
+    ['15.118 回滚时间目标评估', 'rollback-rto-evaluation'],
+    ['15.119 恢复点目标评估', 'backup-rpo-evaluation'],
+    ['15.120 节点到期风险隔离策略', 'expiring-node-isolation-strategy'],
+    ['15.121 无状态负载迁移优先级', 'stateless-workload-migration-priority'],
+    ['15.122 Stateful 服务保护清单', 'stateful-service-protection-ledger'],
+    ['15.123 平台 API 体验评分', 'platform-api-experience-score'],
+    ['15.124 前端实时交互增强验收', 'frontend-realtime-interaction-proof'],
+    ['15.125 多看板统一指标词典', 'dashboard-metric-dictionary'],
+    ['15.126 V15 最终自治评分', 'v15-autonomous-score'],
+    ['15.127 V15 大数据深度评分', 'v15-bigdata-depth-score'],
+    ['15.128 V15 复杂度提升证明', 'v15-complexity-lift-proof'],
+    ['15.129 V15 运行证据完整性', 'v15-evidence-integrity'],
+    ['15.130.1 全软件自动发现目录', 'software-discovery-catalog'],
+    ['15.130.2 Kubernetes Helm Docker 镜像全覆盖', 'software-runtime-image-coverage'],
+    ['15.130.3 DevOps 工具链使用证明', 'software-devops-toolchain-proof'],
+    ['15.130.4 大数据软件链路全覆盖', 'software-bigdata-toolchain-proof'],
+    ['15.130.5 观测安全恢复软件全覆盖', 'software-observability-security-proof'],
+    ['15.130.6 未覆盖软件缺口队列', 'software-coverage-gap-queue'],
+    ['15.130 V16 新纪元预案', 'v16-era-plan'],
+]
+
+def p(String name, Object fallbackValue) {
+    return params.containsKey(name) && params[name] != null ? params[name] : fallbackValue
+}
+
+def refreshWorkspace = {
+    if (env.JOB_NAME == 'github-cicd-test') {
+        sh '''
+            set -eux
+            git --git-dir=/var/jenkins_home/github-cache/cicd-test.git remote set-url origin https://github.com/yipintangzsp/cicd-test.git
+            timeout 60 git --git-dir=/var/jenkins_home/github-cache/cicd-test.git fetch --prune origin +refs/heads/main:refs/heads/main || echo "GitHub cache refresh skipped in V15 workspace reload; using existing local cache"
+            git clone /var/jenkins_home/github-cache/cicd-test.git .
+            git checkout -f main
+            git remote set-url origin https://github.com/yipintangzsp/cicd-test.git
+        '''
+    } else {
+        checkout scm
+    }
+}
+
+def runV15 = {
+    timeout(time: 210, unit: 'MINUTES') {
+        timestamps {
+            try {
+                stage('V15.00 运行 V14 Foundation') {
+                    if ("${p('V15_RUN_V14_FOUNDATION', false)}" == 'true') {
+                        load 'Jenkinsfile-intelligence-v14'
+                    } else {
+                        echo 'V15_RUN_V14_FOUNDATION=false: skip full V14 rerun and inherit live V14 evidence from portal baseline.'
+                    }
+                }
+
+                stage('V15.01 重新载入源码') {
+                    deleteDir()
+                    refreshWorkspace()
+                    sh 'mkdir -p meta reports/v15-baseline reports/v15-intelligence reports/v15-portal reports/v15-observability-import reports/v15-stage-manifest'
+                    env.SCRIPT_NAME = 'Jenkinsfile-intelligence-v15'
+                    env.APP_NAME = 'autonomous-dataops-v15'
+                    env.REGISTRY = '127.0.0.1:30050'
+                    env.V15_PORTAL_NAMESPACE = "${p('V15_PORTAL_NAMESPACE', p('V14_PORTAL_NAMESPACE', p('V13_PORTAL_NAMESPACE', 'ns-apps')))}"
+                    env.V15_PORTAL_SERVICE_NAME = "${p('V15_PORTAL_SERVICE_NAME', p('V14_PORTAL_SERVICE_NAME', 'platform-era-v13-portal'))}"
+                    env.V15_PORTAL_APP_LABEL = "${p('V15_PORTAL_APP_LABEL', 'platform-era-v13-portal')}"
+                    env.V15_PORTAL_NODEPORT = "${p('V15_PORTAL_NODEPORT', p('V14_PORTAL_NODEPORT', p('V13_PORTAL_NODEPORT', '30089')))}"
+                    env.V15_PROMOTE_LEGACY_PUBLIC_NODEPORT = "${p('V15_PROMOTE_LEGACY_PUBLIC_NODEPORT', true)}"
+                    env.V15_LEGACY_PUBLIC_SERVICE_NAME = "${p('V15_LEGACY_PUBLIC_SERVICE_NAME', 'hello-app-v10-portal')}"
+                    env.V15_LEGACY_PUBLIC_NODEPORT = "${p('V15_LEGACY_PUBLIC_NODEPORT', '30087')}"
+                    env.V15_KIBANA_INDEX_PREFIX = "${p('V15_KIBANA_INDEX_PREFIX', 'jenkins-v15-autonomous')}"
+                    env.V15_GRAFANA_DASHBOARD_TITLE = "${p('V15_GRAFANA_DASHBOARD_TITLE', 'ZhangLab V15 Autonomous DataOps Intelligence')}"
+                    env.V15_IMPORT_OBSERVABILITY_ASSETS = "${p('V15_IMPORT_OBSERVABILITY_ASSETS', true)}"
+                    env.V15_PUBLISH_PORTAL = "${p('V15_PUBLISH_PORTAL', true)}"
+                    env.V15_STRICT_RISK_GATE = "${p('V15_STRICT_RISK_GATE', false)}"
+                    env.V15_RUN_V14_FOUNDATION = "${p('V15_RUN_V14_FOUNDATION', false)}"
+                    env.CLOUDFLARE_PUBLIC_HOSTNAME = "${p('CLOUDFLARE_PUBLIC_HOSTNAME', 'platform.heil.ccwu.cc')}"
+                    env.GIT_COMMIT_ID = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
+                    env.GIT_BRANCH_NAME = sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim()
+                    env.GIT_AUTHOR = sh(script: 'git log -1 --pretty=%an', returnStdout: true).trim()
+                    env.GIT_COMMIT_MSG = sh(script: 'git log -1 --pretty=%s', returnStdout: true).trim()
+                    env.SEMVER = "0.0.${env.BUILD_NUMBER}"
+                    currentBuild.displayName = "#${env.BUILD_NUMBER} v15 ${env.SEMVER}"
+                    currentBuild.description = "${env.GIT_AUTHOR} | ${env.GIT_COMMIT_MSG.take(60)}"
+                    sh '''
+node - <<'NODE'
+const fs = require('fs');
+const info = {
+  script: process.env.SCRIPT_NAME,
+  build: process.env.BUILD_NUMBER,
+  semver: process.env.SEMVER,
+  commit: process.env.GIT_COMMIT_ID,
+  branch: process.env.GIT_BRANCH_NAME,
+  portal_url: `http://192.168.1.58:${process.env.V15_PORTAL_NODEPORT}/`,
+  cloudflare_hostname: process.env.CLOUDFLARE_PUBLIC_HOSTNAME,
+  inherits: 'Jenkinsfile-intelligence-v14'
+};
+fs.writeFileSync('meta/v15-build-info.json', JSON.stringify(info, null, 2) + '\\n');
+NODE
+                    '''
+                }
+
+                stage('V15.02 捕获 V14 Fresh Baseline') {
+                    sh '''
+                        set -eu
+                        curl -fsS --max-time 20 "http://192.168.1.58:${V15_PORTAL_NODEPORT}/evidence.json" -o reports/v15-baseline/v14-evidence.json || printf '{"summary":{"collectionWarning":"v14 baseline unavailable"}}\\n' > reports/v15-baseline/v14-evidence.json
+                        node -e "JSON.parse(require('fs').readFileSync('reports/v15-baseline/v14-evidence.json','utf8'))"
+                    '''
+                }
+
+                stage('V15.03 采集实时平台资产') {
+                    sh '''
+                        set -eu
+                        capture_json() {
+                          title="$1"; output="$2"; shift 2
+                          tmp="${output}.tmp"
+                          for attempt in 1 2 3 4; do
+                            if timeout 70s "$@" -o json > "$tmp" 2>"${tmp}.err"; then
+                              mv "$tmp" "$output"
+                              rm -f "${tmp}.err"
+                              return 0
+                            fi
+                            printf '[%s] %s attempt=%s failed: %s\\n' "$(date -u +%FT%TZ)" "$title" "$attempt" "$(cat "${tmp}.err" 2>/dev/null)" >> meta/v15-cluster-capture-errors.log
+                            sleep $((attempt * 5))
+                          done
+                          printf '{"apiVersion":"v1","items":[],"captureWarning":"%s capture failed after retries"}\\n' "$title" > "$output"
+                          return 0
+                        }
+                        capture_json pods meta/v15-pods-live.json kubectl get pods -A
+                        capture_json services meta/v15-services-live.json kubectl get svc -A
+                        capture_json endpoints meta/v15-endpoints-live.json kubectl get endpoints -A
+                        capture_json workloads meta/v15-workloads-live.json kubectl get deploy,statefulset,daemonset -A
+                        capture_json nodes meta/v15-nodes-live.json kubectl get nodes
+                        capture_json events meta/v15-events-live.json kubectl get events -A --sort-by=.lastTimestamp
+                        capture_json metricsapiservice meta/v15-metrics-apiservice.json kubectl get apiservice v1beta1.metrics.k8s.io
+                        capture_json pvc meta/v15-pvc-live.json kubectl get pvc -A
+                        capture_json pv meta/v15-pv-live.json kubectl get pv
+                        capture_json namespaces meta/v15-namespaces-live.json kubectl get ns
+                        capture_json ingress meta/v15-ingress-live.json kubectl get ingress -A
+                        capture_json configmaps meta/v15-configmaps-live.json kubectl get cm -A
+                        capture_json serviceaccounts meta/v15-serviceaccounts-live.json kubectl get sa -A
+                        capture_json storageclasses meta/v15-storageclasses-live.json kubectl get storageclass
+                        capture_json argocdapps meta/v15-argocd-applications-live.json kubectl get applications.argoproj.io -A
+                        capture_json servicemonitors meta/v15-service-monitors-live.json kubectl get servicemonitor,podmonitor -A
+                        capture_json sparkapplications meta/v15-spark-applications-live.json kubectl get sparkapplications.sparkoperator.k8s.io -A
+                        capture_json flinkdeployments meta/v15-flink-deployments-live.json kubectl get flinkdeployments.flink.apache.org -A
+                        kubectl version -o json > meta/v15-kubernetes-version.json 2>&1 || true
+                        kubectl top nodes --no-headers > meta/v15-node-top.txt 2>&1 || true
+                        kubectl top pods -A --no-headers > meta/v15-pod-top.txt 2>&1 || true
+                        helm list -A -o json > meta/v15-helm-releases.json 2>meta/v15-helm-releases.err || printf '[]\n' > meta/v15-helm-releases.json
+                        docker images --format '{{json .}}' > meta/v15-docker-images.ndjson 2>meta/v15-docker-images.err || true
+                        crictl images -o json > meta/v15-crictl-images.json 2>meta/v15-crictl-images.err || printf '{"images":[]}\n' > meta/v15-crictl-images.json
+                        ctr -n k8s.io images list -q > meta/v15-containerd-images.txt 2>meta/v15-containerd-images.err || true
+                    '''
+                }
+
+                stage('V15.04 智能阶段计划生成') {
+                    def fixedStages = [
+                        'V15.00 运行 V14 Foundation',
+                        'V15.01 重新载入源码',
+                        'V15.02 捕获 V14 Fresh Baseline',
+                        'V15.03 采集实时平台资产',
+                        'V15.04 智能阶段计划生成'
+                    ]
+                    writeFile file: 'reports/v15-stage-plan.txt', text: (fixedStages + v15Stages.collect { it[0] } + [
+                        'V15.90 生成智能资产',
+                        'V15.91 V15 资产质量门禁',
+                        'V15.92 导入 Grafana/Kibana/Elasticsearch',
+                        'V15.93 发布 V15 Hypergrid 前端',
+                        'V15.94 V15 成果验证',
+                        'V15.95 最终结论与归档'
+                    ]).join('\n') + '\n'
+                    sh 'nl -ba reports/v15-stage-plan.txt | tee reports/v15-stage-manifest/stage-count.txt'
+                }
+
+                v15Stages.each { item ->
+                    stage(item[0]) {
+                        env.V15_STAGE_KEY = item[1]
+                        env.V15_STAGE_TITLE = item[0]
+                        sh '''
+                            set -eu
+                            node ci/v15_intelligence.mjs check "$V15_STAGE_KEY" "$V15_STAGE_TITLE"
+                        '''
+                    }
+                }
+
+                stage('V15.90 生成智能资产') {
+                    sh '''
+                        set -eu
+                        node ci/v15_intelligence.mjs build
+                    '''
+                }
+
+                stage('V15.91 V15 资产质量门禁') {
+                    sh '''
+                        set -eu
+                        node ci/v15_intelligence.mjs lint
+                        test -s reports/v15-data-platform-apps.json
+                        test -s reports/v15-data-platform-apps.ndjson
+                        test -s reports/v15-devops-optimization.json
+                        test -s reports/v15-devops-optimization.ndjson
+                        test -s reports/v15-autonomous-ops.json
+                        test -s reports/v15-autonomous-ops.ndjson
+                        test -s reports/v15-software-coverage.json
+                        test -s reports/v15-software-coverage.ndjson
+                        test -s reports/v15-observability.ndjson
+                        test -s reports/v15-grafana-dashboard.json
+                        test -s reports/v15-kibana-dashboard.ndjson
+                        test -s reports/v15-portal/index.html
+                        ACTUAL=$(wc -l < reports/v15-stage-plan.txt | tr -d ' ')
+                        [ "$ACTUAL" -ge 140 ] || { echo "v15 stage count too low: $ACTUAL"; exit 1; }
+                        P1='kubectl[[:space:]]+delete'
+                        P2='docker[[:space:]]+system[[:space:]]+prune'
+                        P3='rm[[:space:]]+-rf'
+                        P4='helm[[:space:]]+uninstall'
+                        P5='git[[:space:]]+reset[[:space:]]+--hard'
+                        grep -RInE "$P1|$P2|$P3|$P4|$P5" Jenkinsfile-intelligence-v15 ci/v15_intelligence.mjs Jenkinsfile-router > reports/v15-intelligence/destructive-scan.txt || true
+                        [ ! -s reports/v15-intelligence/destructive-scan.txt ] || { cat reports/v15-intelligence/destructive-scan.txt; exit 1; }
+                    '''
+                }
+
+                stage('V15.92 导入 Grafana/Kibana/Elasticsearch') {
+                    sh '''
+                        set -eu
+                        mkdir -p reports/v15-observability-import
+                        STRICT="${V15_STRICT_RISK_GATE:-false}"
+                        IMPORT_WARN_LOG="reports/v15-observability-import/import.warnings.log"
+                        : > "$IMPORT_WARN_LOG"
+                        warn_import() {
+                          printf '[%s] %s\n' "$(date -u +%FT%TZ)" "$*" | tee -a "$IMPORT_WARN_LOG" >&2
+                        }
+                        fail_or_warn_import() {
+                          warn_import "$*"
+                          if [ "$STRICT" = "true" ]; then
+                            exit 1
+                          fi
+                        }
+                        if [ "${V15_IMPORT_OBSERVABILITY_ASSETS}" != "true" ]; then
+                          echo "V15_IMPORT_OBSERVABILITY_ASSETS=false" | tee reports/v15-observability-import/import.disabled
+                          exit 0
+                        fi
+                        resolve_cluster_url() {
+                          url="$1"
+                          case "$url" in http://*.svc.cluster.local*|https://*.svc.cluster.local*) ;; *) printf '%s' "$url"; return 0 ;; esac
+                          scheme="${url%%://*}"; rest="${url#*://}"; hostport="${rest%%/*}"; path="${rest#"$hostport"}"; [ "$path" != "$rest" ] || path="/"
+                          host="${hostport%%:*}"; portpart="${hostport#"$host"}"; svc="${host%%.*}"; remainder="${host#*.}"; ns="${remainder%%.*}"
+                          ip="$(command kubectl -n "$ns" get svc "$svc" -o jsonpath='{.spec.clusterIP}' 2>/dev/null || true)"
+                          if [ -n "$ip" ] && [ "$ip" != "None" ]; then printf '%s://%s%s%s' "$scheme" "$ip" "$portpart" "$path"; else printf '%s' "$url"; fi
+                        }
+                        ES_URL="$(resolve_cluster_url "${ELASTICSEARCH_URL:-http://elasticsearch.default.svc.cluster.local:9200}")"
+                        KB_URL="$(resolve_cluster_url "${KIBANA_INTERNAL_URL:-http://kibana-service.default.svc.cluster.local:5601}")"
+                        GRAFANA_URL="$(resolve_cluster_url "${GRAFANA_URL:-http://kube-stack-grafana.monitoring.svc.cluster.local}")"
+                        GRAFANA_USER="${GRAFANA_USER:-admin}"
+                        GRAFANA_PASSWORD="${GRAFANA_PASSWORD:-zsp359742}"
+                        INDEX_DATE="$(date -u +%Y.%m.%d)"
+                        INDEX_NAME="${V15_KIBANA_INDEX_PREFIX}-${INDEX_DATE}"
+                        export INDEX_NAME
+                        cat > reports/v15-observability-import/mapping.json <<'JSON'
+{
+  "mappings": {
+    "properties": {
+      "@timestamp": { "type": "date" },
+      "pipeline_version": { "type": "keyword" },
+      "type": { "type": "keyword" },
+      "build": { "type": "keyword" },
+      "job": { "type": "keyword" },
+      "category": { "type": "keyword" },
+      "status": { "type": "keyword" },
+      "layer": { "type": "keyword" },
+      "name": { "type": "keyword" },
+      "key": { "type": "keyword" },
+      "app_key": { "type": "keyword" },
+      "flow_key": { "type": "keyword" },
+      "source_app": { "type": "keyword" },
+      "target_app": { "type": "keyword" },
+      "namespace": { "type": "keyword" },
+      "node": { "type": "keyword" },
+      "source": { "type": "keyword" },
+      "message": { "type": "text", "fields": { "keyword": { "type": "keyword", "ignore_above": 256 } } },
+      "score": { "type": "double" },
+      "app_score": { "type": "double" },
+      "risk_score": { "type": "double" },
+      "health_score": { "type": "double" },
+      "recovery_score": { "type": "double" },
+      "observability_score": { "type": "double" },
+      "data_platform_score": { "type": "double" },
+      "devops_optimization_score": { "type": "double" },
+      "autonomous_score": { "type": "double" },
+      "finops_score": { "type": "double" },
+      "incident_readiness_score": { "type": "double" },
+      "bigdata_depth_score": { "type": "double" },
+      "software_coverage_score": { "type": "double" },
+      "severity": { "type": "double" },
+      "priority": { "type": "long" },
+      "rto_minutes": { "type": "long" },
+      "catalog_total": { "type": "long" },
+      "observed_catalog_total": { "type": "long" },
+      "covered_catalog_total": { "type": "long" },
+      "missing_catalog_total": { "type": "long" },
+      "discovered_uncataloged_total": { "type": "long" },
+      "control_plane_pods": { "type": "long" },
+      "worker_pods": { "type": "long" },
+      "control_pod_share": { "type": "double" },
+      "stateless_candidates": { "type": "long" },
+      "pod_count": { "type": "long" },
+      "restart_total": { "type": "long" },
+      "pressure_events": { "type": "long" },
+      "cpu_allocatable_millicores": { "type": "long" },
+      "memory_allocatable_mi": { "type": "long" },
+      "ready_pods": { "type": "long" },
+      "total_pods": { "type": "long" },
+      "restarts": { "type": "long" },
+      "services": { "type": "long" },
+      "workloads": { "type": "long" },
+      "images": { "type": "long" },
+      "helm_releases": { "type": "long" },
+      "endpoints_ready": { "type": "long" },
+      "endpoints_total": { "type": "long" },
+      "ready": { "type": "boolean" },
+      "observed": { "type": "boolean" },
+      "worker_idle": { "type": "boolean" },
+      "metrics_scrape_timeout": { "type": "boolean" },
+      "safe_mode": { "type": "boolean" },
+      "checkpoint": { "type": "keyword" }
+    }
+  }
+}
+JSON
+                        curl -fsS -X PUT "${ES_URL}/${INDEX_NAME}" -H 'Content-Type: application/json' --data-binary @reports/v15-observability-import/mapping.json -o reports/v15-observability-import/create-index.json || true
+                        node - <<'NODE'
+const fs = require('fs');
+const crypto = require('crypto');
+const index = process.env.INDEX_NAME;
+const input = fs.readFileSync('reports/v15-observability.ndjson','utf8').split('\\n').filter(Boolean);
+const out = [];
+input.forEach((line, i) => {
+  const doc = JSON.parse(line);
+  const source = [doc.pipeline_version, doc.build, doc.type, doc.category, doc.name, doc.key, i].join('|');
+  const id = crypto.createHash('sha1').update(source).digest('hex');
+  out.push(JSON.stringify({ index: { _index: index, _id: id } }));
+  out.push(JSON.stringify(doc));
+});
+fs.writeFileSync('reports/v15-observability-import/bulk.ndjson', out.join('\\n') + '\\n');
+console.log('v15_bulk_events=' + input.length);
+NODE
+                        if curl -fsS -X POST "${ES_URL}/_bulk?refresh=true" -H 'Content-Type: application/x-ndjson' --data-binary @reports/v15-observability-import/bulk.ndjson -o reports/v15-observability-import/bulk-result.json; then
+                          if ! node -e "const r=JSON.parse(require('fs').readFileSync('reports/v15-observability-import/bulk-result.json','utf8')); if(r.errors){console.error(JSON.stringify(r.items.filter(i=>(i.index||{}).error).slice(0,5),null,2)); process.exit(1)} console.log('bulk_took_ms='+r.took)"; then
+                            fail_or_warn_import "Elasticsearch bulk import returned item errors; continuing because V15_STRICT_RISK_GATE is not true"
+                          fi
+                          curl -fsS "${ES_URL}/${INDEX_NAME}/_count" -o reports/v15-observability-import/count.json || fail_or_warn_import "Elasticsearch count query failed for ${INDEX_NAME}"
+                        else
+                          fail_or_warn_import "Elasticsearch bulk import request failed for ${ES_URL}; Grafana/Kibana assets will still be archived"
+                        fi
+                        cat > reports/v15-observability-import/data-view.json <<EOF2
+{"attributes":{"title":"${V15_KIBANA_INDEX_PREFIX}-*","timeFieldName":"@timestamp"}}
+EOF2
+                        curl -fsS -X POST "${KB_URL}/api/saved_objects/index-pattern/${V15_KIBANA_INDEX_PREFIX}?overwrite=true" -H 'kbn-xsrf: true' -H 'Content-Type: application/json' --data-binary @reports/v15-observability-import/data-view.json -o reports/v15-observability-import/kibana-data-view.json || true
+                        node - <<'NODE'
+const fs = require('fs');
+const prefix = process.env.V15_KIBANA_INDEX_PREFIX || 'jenkins-v15-autonomous';
+const oldVisualizations = [
+  'intelligence-score', 'risk-score', 'recovery-score', 'stage-status', 'category-donut',
+  'risk-category', 'risk-layer', 'playbook-area', 'node-ready', 'layer-health',
+  'stage-score', 'risk-severity', 'playbook-priority', 'event-trend', 'latest-records',
+  'risk-ledger', 'playbook-ledger', 'runtime-ledger',
+  ...Array.from({ length: 18 }, (_, index) => `deep-lens-${index + 1}`)
+];
+const oldDashboards = [
+  'platform-intelligence-unified', 'platform-intelligence-drilldown',
+  'command', 'risk', 'recovery', 'data', 'observability', 'executive'
+];
+const objects = [
+  ...oldVisualizations.map((id) => `visualization/${prefix}-${id}`),
+  ...oldDashboards.map((id) => `dashboard/${prefix}-${id}`),
+];
+fs.writeFileSync('reports/v15-observability-import/kibana-auto-delete-list.txt', objects.join('\\n') + '\\n');
+NODE
+                        while read -r object_path; do
+                          [ -n "$object_path" ] || continue
+                          type="${object_path%%/*}"
+                          object_id="${object_path#*/}"
+                          curl -fsS -X DELETE "${KB_URL}/api/saved_objects/${type}/${object_id}" -H 'kbn-xsrf: true' -o "reports/v15-observability-import/delete-${type}-${object_id}.json" || true
+                        done < reports/v15-observability-import/kibana-auto-delete-list.txt
+                        curl -fsS -X POST "${KB_URL}/api/saved_objects/_import?overwrite=true" -H 'kbn-xsrf: true' -F file=@reports/v15-kibana-dashboard.ndjson -o reports/v15-observability-import/kibana-saved-object-import.json || true
+                        cat > reports/v15-observability-import/grafana-v15-datasource.json <<EOF2
+{"name":"Jenkins V15 Intelligence Elasticsearch","uid":"jenkins-v15-autonomous-es","type":"elasticsearch","access":"proxy","url":"${ES_URL}","basicAuth":false,"isDefault":false,"jsonData":{"esVersion":"8.0.0","index":"${V15_KIBANA_INDEX_PREFIX}-*","timeField":"@timestamp","logMessageField":"message","logLevelField":"severity"}}
+EOF2
+                        if curl -fsS "${GRAFANA_URL%/}/api/datasources/uid/jenkins-v15-autonomous-es" -u "${GRAFANA_USER}:${GRAFANA_PASSWORD}" -o reports/v15-observability-import/grafana-v15-datasource-existing.json; then
+                          curl -fsS -X PUT "${GRAFANA_URL%/}/api/datasources/uid/jenkins-v15-autonomous-es" -u "${GRAFANA_USER}:${GRAFANA_PASSWORD}" -H 'Content-Type: application/json' --data-binary @reports/v15-observability-import/grafana-v15-datasource.json -o reports/v15-observability-import/grafana-v15-datasource-result.json || fail_or_warn_import "Grafana datasource update failed at ${GRAFANA_URL}"
+                        else
+                          curl -fsS -X POST "${GRAFANA_URL%/}/api/datasources" -u "${GRAFANA_USER}:${GRAFANA_PASSWORD}" -H 'Content-Type: application/json' --data-binary @reports/v15-observability-import/grafana-v15-datasource.json -o reports/v15-observability-import/grafana-v15-datasource-result.json || fail_or_warn_import "Grafana datasource create failed at ${GRAFANA_URL}"
+                        fi
+                        node - <<'NODE'
+const fs = require('fs');
+const dashboard = JSON.parse(fs.readFileSync('reports/v15-grafana-dashboard.json','utf8'));
+dashboard.id = null;
+dashboard.version = Number(dashboard.version || 1) + 1;
+fs.writeFileSync('reports/v15-observability-import/grafana-import-payload.json', JSON.stringify({ dashboard, folderUid: '', overwrite: true, message: 'Jenkins V15 intelligence import build ' + (process.env.BUILD_NUMBER || 'unknown') }, null, 2));
+NODE
+                        if curl -fsS -X POST "${GRAFANA_URL%/}/api/dashboards/db" -u "${GRAFANA_USER}:${GRAFANA_PASSWORD}" -H 'Content-Type: application/json' --data-binary @reports/v15-observability-import/grafana-import-payload.json -o reports/v15-observability-import/grafana-dashboard-import.json; then
+                          if ! node -e "const r=JSON.parse(require('fs').readFileSync('reports/v15-observability-import/grafana-dashboard-import.json','utf8')); if(!r.uid||!r.url){console.error(JSON.stringify(r,null,2)); process.exit(1)} console.log('grafana_dashboard_uid='+r.uid); console.log('grafana_dashboard_url='+r.url)"; then
+                            fail_or_warn_import "Grafana dashboard import response did not include uid/url"
+                          fi
+                        else
+                          fail_or_warn_import "Grafana dashboard import failed at ${GRAFANA_URL}; dashboard JSON remains archived"
+                        fi
+                    '''
+                }
+
+                stage('V15.93 发布 V15 Hypergrid 前端') {
+                    if (env.V15_PUBLISH_PORTAL == 'true') {
+                        sh '''
+                            set -eu
+                            STRICT="${V15_STRICT_RISK_GATE:-false}"
+                            PORTAL_WARN_LOG="reports/v15-portal/publish.warnings.log"
+                            : > "$PORTAL_WARN_LOG"
+                            warn_portal() {
+                              printf '[%s] %s\n' "$(date -u +%FT%TZ)" "$*" | tee -a "$PORTAL_WARN_LOG" >&2
+                            }
+                            fail_or_warn_portal() {
+                              warn_portal "$*"
+                              if [ "$STRICT" = "true" ]; then
+                                exit 1
+                              fi
+                            }
+                            cat > reports/v15-portal/Dockerfile <<'DOCKERFILE'
+FROM 127.0.0.1:30050/library/nginx-alpine:1.29.7-alpine
+RUN rm -f /etc/nginx/conf.d/default.conf
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY index.html evidence.json /usr/share/nginx/html/
+EXPOSE 80
+DOCKERFILE
+                            cat > reports/v15-portal/nginx.conf <<'NGINX'
+server {
+  listen 80;
+  root /usr/share/nginx/html;
+  index index.html;
+  add_header X-Platform-Intelligence "v15" always;
+  add_header Cache-Control "no-store" always;
+  location / { try_files $uri $uri/ /index.html; }
+  location = /evidence.json { default_type application/json; }
+}
+NGINX
+                            IMAGE="127.0.0.1:30050/autonomous-dataops-v15:${GIT_COMMIT_ID}"
+                            if docker build --network none --label app.name=autonomous-dataops-v15 --label pipeline.version=v15 --label git.commit=${GIT_COMMIT_ID} -t "$IMAGE" reports/v15-portal; then
+                              docker push "$IMAGE" || fail_or_warn_portal "Harbor push failed for ${IMAGE}; Kubernetes apply will still try local IfNotPresent image"
+                            else
+                              fail_or_warn_portal "Docker build failed for V15 portal image ${IMAGE}; skipping Kubernetes publish and keeping generated portal artifacts"
+                              exit 0
+                            fi
+                            start_fallback() {
+                              reason="$1"
+                              echo "starting public fallback on 127.0.0.1:30090 because ${reason}" | tee reports/v15-portal/fallback.reason
+                              docker rm -f zhanglab-v15-portal-fallback >/dev/null 2>&1 || true
+                              docker run -d --name zhanglab-v15-portal-fallback --restart unless-stopped -p 127.0.0.1:30090:80 "$IMAGE" >/tmp/zhanglab-v15-portal-fallback.cid || fail_or_warn_portal "fallback docker run failed for ${IMAGE}"
+                              docker ps --filter name=zhanglab-v15-portal-fallback --format '{{.Names}} {{.Status}} {{.Ports}}' | tee reports/v15-portal/fallback-container.txt || true
+                            }
+                            cat > reports/v15-portal/k8s.yaml <<EOF2
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ${V15_PORTAL_SERVICE_NAME}
+  namespace: ${V15_PORTAL_NAMESPACE}
+  labels:
+    app.kubernetes.io/name: ${V15_PORTAL_APP_LABEL}
+    app.kubernetes.io/part-of: platform-intelligence
+    app.kubernetes.io/component: evidence-portal
+    pipeline-version: v15
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ${V15_PORTAL_APP_LABEL}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ${V15_PORTAL_APP_LABEL}
+        app.kubernetes.io/part-of: platform-intelligence
+        app.kubernetes.io/component: evidence-portal
+        pipeline-version: v15
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      containers:
+        - name: portal
+          image: ${IMAGE}
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 96Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ${V15_PORTAL_SERVICE_NAME}
+  namespace: ${V15_PORTAL_NAMESPACE}
+  labels:
+    app.kubernetes.io/name: ${V15_PORTAL_APP_LABEL}
+    app.kubernetes.io/part-of: platform-intelligence
+    pipeline-version: v15
+spec:
+  type: NodePort
+  selector:
+    app.kubernetes.io/name: ${V15_PORTAL_APP_LABEL}
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+      nodePort: ${V15_PORTAL_NODEPORT}
+EOF2
+                            if timeout 25s kubectl get --raw=/readyz >/tmp/v15-k8s-readyz.txt 2>&1; then
+                              cp /tmp/v15-k8s-readyz.txt reports/v15-portal/k8s-readyz.txt
+                            else
+                              cp /tmp/v15-k8s-readyz.txt reports/v15-portal/k8s-readyz.failed.txt || true
+                              echo "k8s readyz timed out; still attempting non-destructive apply with retries before fallback" | tee reports/v15-portal/k8s-readyz.warning
+                            fi
+                            APPLY_OK=false
+                            for attempt in 1 2 3 4 5 6; do
+                              if timeout 90s kubectl apply --validate=false -f reports/v15-portal/k8s.yaml; then
+                                APPLY_OK=true
+                                break
+                              fi
+                              echo "kubectl apply failed, retry attempt=${attempt}" >&2
+                              sleep $((attempt * 8))
+                            done
+                            if [ "$APPLY_OK" = "true" ] && kubectl -n ${V15_PORTAL_NAMESPACE} rollout status deploy/${V15_PORTAL_SERVICE_NAME} --timeout=420s; then
+                              docker rm -f zhanglab-v15-portal-fallback >/dev/null 2>&1 || true
+                            else
+                              echo "k8s rollout did not complete; public fallback container will serve 127.0.0.1:30090" | tee reports/v15-portal/k8s-rollout-fallback.warning
+                              start_fallback "k8s apply or rollout timeout"
+                            fi
+                        '''
+                    } else {
+                        sh "echo 'V15_PUBLISH_PORTAL=false' > reports/v15-portal/publish.disabled"
+                    }
+                }
+
+                stage('V15.93.5 提升公网入口到 V15') {
+                    sh '''
+                        set -eu
+                        mkdir -p reports/v15-portal
+                        PROMOTE="${V15_PROMOTE_LEGACY_PUBLIC_NODEPORT:-true}"
+                        NS="${V15_PORTAL_NAMESPACE:-ns-apps}"
+                        LEGACY_SVC="${V15_LEGACY_PUBLIC_SERVICE_NAME:-hello-app-v10-portal}"
+                        LEGACY_NODEPORT="${V15_LEGACY_PUBLIC_NODEPORT:-30087}"
+                        TARGET_APP="${V15_PORTAL_APP_LABEL:-platform-era-v13-portal}"
+                        if [ "$PROMOTE" != "true" ]; then
+                          echo "V15_PROMOTE_LEGACY_PUBLIC_NODEPORT=false" | tee reports/v15-portal/public-promotion.disabled
+                          exit 0
+                        fi
+                        timeout 30s kubectl -n "$NS" get svc "$LEGACY_SVC" -o json > reports/v15-portal/public-promotion-before.json
+                        node - <<'NODE'
+const fs = require('fs');
+const service = JSON.parse(fs.readFileSync('reports/v15-portal/public-promotion-before.json', 'utf8'));
+const hadSelector = Object.prototype.hasOwnProperty.call(service.spec || {}, 'selector');
+const oldSelector = service.spec?.selector || {};
+const targetSelector = { 'app.kubernetes.io/name': process.env.V15_PORTAL_APP_LABEL || 'platform-era-v13-portal' };
+const patch = [{ op: hadSelector ? 'replace' : 'add', path: '/spec/selector', value: targetSelector }];
+const rollback = hadSelector
+  ? [{ op: 'replace', path: '/spec/selector', value: oldSelector }]
+  : [{ op: 'remove', path: '/spec/selector' }];
+const nodePort = process.env.V15_LEGACY_PUBLIC_NODEPORT || '30087';
+const summary = {
+  namespace: process.env.V15_PORTAL_NAMESPACE || 'ns-apps',
+  service: process.env.V15_LEGACY_PUBLIC_SERVICE_NAME || 'hello-app-v10-portal',
+  nodePort,
+  oldSelector,
+  targetSelector,
+  reason: 'Promote existing Cloudflare-facing NodePort service to the V15 portal without changing Cloudflare DNS/tunnel settings.',
+  rollbackCommand: `kubectl -n ${process.env.V15_PORTAL_NAMESPACE || 'ns-apps'} patch svc ${process.env.V15_LEGACY_PUBLIC_SERVICE_NAME || 'hello-app-v10-portal'} --type json -p '${JSON.stringify(rollback)}'`
+};
+fs.writeFileSync('reports/v15-portal/public-promotion-patch.json', JSON.stringify(patch));
+fs.writeFileSync('reports/v15-portal/public-promotion-rollback.json', JSON.stringify(rollback));
+fs.writeFileSync('reports/v15-portal/public-promotion-plan.json', JSON.stringify(summary, null, 2) + '\\n');
+console.log('public_promotion_target=' + JSON.stringify(targetSelector));
+console.log('public_promotion_rollback=' + summary.rollbackCommand);
+NODE
+                        kubectl -n "$NS" patch svc "$LEGACY_SVC" --type json -p "$(cat reports/v15-portal/public-promotion-patch.json)"
+                        timeout 30s kubectl -n "$NS" get svc "$LEGACY_SVC" -o json > reports/v15-portal/public-promotion-after.json
+                        for attempt in $(seq 1 30); do
+                          if curl -fsS --max-time 10 "http://192.168.1.58:${LEGACY_NODEPORT}/evidence.json" -o reports/v15-portal/legacy-public-nodeport-evidence.json &&
+                             node -e "const e=JSON.parse(require('fs').readFileSync('reports/v15-portal/legacy-public-nodeport-evidence.json','utf8')); const v=e.summary?.pipeline_version||e.summary?.pipelineVersion; if(v !== 'v15'){console.error('legacy_public_nodeport_version='+v); process.exit(1)} console.log('legacy_public_nodeport_version='+v);"; then
+                            echo "legacy_public_nodeport_promoted=true" | tee reports/v15-portal/public-promotion-result.txt
+                            exit 0
+                          fi
+                          sleep 3
+                        done
+                        echo "legacy public NodePort did not return V15 after selector promotion" | tee reports/v15-portal/public-promotion.failed
+                        cat reports/v15-portal/public-promotion-plan.json
+                        exit 1
+                    '''
+                }
+
+                stage('V15.94 V15 成果验证') {
+                    sh '''
+                        set -eu
+                        STRICT="${V15_STRICT_RISK_GATE:-false}"
+                        VERIFY_WARN_LOG="reports/v15-portal/verify.warnings.log"
+                        : > "$VERIFY_WARN_LOG"
+                        warn_verify() {
+                          printf '[%s] %s\n' "$(date -u +%FT%TZ)" "$*" | tee -a "$VERIFY_WARN_LOG" >&2
+                        }
+                        fail_or_warn_verify() {
+                          warn_verify "$*"
+                          if [ "$STRICT" = "true" ]; then
+                            exit 1
+                          fi
+                        }
+                        require_marker() {
+                          file="$1"; marker="$2"; label="$3"
+                          grep -q "$marker" "$file" || fail_or_warn_verify "${label} missing marker ${marker}"
+                        }
+                        wait_for_marker() {
+                          url="$1"; marker="$2"; output="$3"
+                          for attempt in $(seq 1 30); do
+                            if curl -fsS --max-time 15 "$url" -o "$output" && grep -q "$marker" "$output"; then
+                              return 0
+                            fi
+                            sleep 3
+                          done
+                          echo "missing marker ${marker} at ${url}" >&2
+                          test -s "$output" && tail -c 500 "$output" >&2 || true
+                          return 1
+                        }
+                        if wait_for_marker "http://192.168.1.58:${V15_PORTAL_NODEPORT}/" 'Big Data Application Lab' reports/v15-portal/internal.verify.html; then
+                          require_marker reports/v15-portal/internal.verify.html 'v15-sonic-command-20260601' 'internal NodePort'
+                          require_marker reports/v15-portal/internal.verify.html 'AudioContext' 'internal NodePort'
+                          require_marker reports/v15-portal/internal.verify.html 'Sound ON' 'internal NodePort'
+                          require_marker reports/v15-portal/internal.verify.html 'sound-rev-v2' 'internal NodePort'
+                          wait_for_marker "http://192.168.1.58:${V15_PORTAL_NODEPORT}/evidence.json" 'intelligenceScore' reports/v15-portal/evidence.verify.json || fail_or_warn_verify "internal NodePort evidence.json did not expose intelligenceScore"
+                        else
+                          fail_or_warn_verify "internal NodePort verification failed; checking Cloudflare public fallback"
+                        fi
+                        if wait_for_marker "https://${CLOUDFLARE_PUBLIC_HOSTNAME}/" 'Big Data Application Lab' reports/v15-portal/public.verify.html; then
+                          require_marker reports/v15-portal/public.verify.html 'v15-sonic-command-20260601' 'public hostname'
+                          require_marker reports/v15-portal/public.verify.html 'AudioContext' 'public hostname'
+                          require_marker reports/v15-portal/public.verify.html 'Sound ON' 'public hostname'
+                          require_marker reports/v15-portal/public.verify.html 'sound-rev-v2' 'public hostname'
+                          wait_for_marker "https://${CLOUDFLARE_PUBLIC_HOSTNAME}/evidence.json" 'intelligenceScore' reports/v15-portal/public-evidence.verify.json || fail_or_warn_verify "public evidence.json did not expose intelligenceScore"
+                        else
+                          fail_or_warn_verify "public hostname verification failed inside Jenkins; checking local Cloudflare origin bridge 127.0.0.1:30087"
+                          if wait_for_marker "http://127.0.0.1:30087/" 'v15-sonic-command-20260601' reports/v15-portal/public-origin-bridge.verify.html; then
+                            require_marker reports/v15-portal/public-origin-bridge.verify.html 'sound-rev-v2' 'local Cloudflare origin bridge'
+                          else
+                            fail_or_warn_verify "local Cloudflare origin bridge verification failed"
+                          fi
+                        fi
+                        timeout 20s kubectl get deploy,svc -n ${V15_PORTAL_NAMESPACE} -l app.kubernetes.io/name=${V15_PORTAL_APP_LABEL} -o wide | tee reports/v15-portal/k8s-live.txt || true
+                        curl -fsS --max-time 20 "https://${CLOUDFLARE_PUBLIC_HOSTNAME}/evidence.json" -o reports/v15-portal/public-current-evidence.json || true
+                        node - <<'NODE'
+const fs = require('fs');
+function readJson(file) {
+  try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return null; }
+}
+const generated = readJson('reports/v15-portal/evidence.json') || {};
+const publicEvidence = readJson('reports/v15-portal/public-current-evidence.json') || {};
+const generatedSummary = generated.summary || {};
+const publicSummary = publicEvidence.summary || {};
+const generatedVersion = generatedSummary.pipeline_version || generatedSummary.pipelineVersion || 'unknown';
+const publicVersion = publicSummary.pipeline_version || publicSummary.pipelineVersion || 'unknown';
+const generatedBuild = generatedSummary.build || 'unknown';
+const publicBuild = publicSummary.build || 'unknown';
+const diagnosis = {
+  publicHost: process.env.CLOUDFLARE_PUBLIC_HOSTNAME,
+  internalNodePort: process.env.V15_PORTAL_NODEPORT,
+  generatedVersion,
+  generatedBuild,
+  publicVersion,
+  publicBuild,
+  state: generatedVersion === publicVersion ? 'aligned' : 'public-route-stale',
+  action: generatedVersion === publicVersion
+    ? 'No public route action needed.'
+    : 'Public hostname still serves an older portal. Update the Cloudflare tunnel/origin route to the V15 NodePort or publish service.'
+};
+fs.writeFileSync('reports/v15-portal/public-route-diagnosis.json', JSON.stringify(diagnosis, null, 2) + '\\n');
+console.log('public_route_state=' + diagnosis.state);
+console.log('public_route_generated=' + diagnosis.generatedVersion + '#' + diagnosis.generatedBuild);
+console.log('public_route_current=' + diagnosis.publicVersion + '#' + diagnosis.publicBuild);
+NODE
+                    '''
+                }
+
+                stage('V15.95 最终结论与归档') {
+                    sh '''
+                        set -eu
+                        cat > reports/v15-release-verdict.json <<EOF2
+{
+  "pipeline": "Jenkinsfile-intelligence-v15",
+  "inherits": "Jenkinsfile-intelligence-v14",
+  "build": "${BUILD_NUMBER}",
+  "commit": "${GIT_COMMIT_ID}",
+  "internal_portal": "http://192.168.1.58:${V15_PORTAL_NODEPORT}/",
+  "public_portal": "https://${CLOUDFLARE_PUBLIC_HOSTNAME}/",
+  "grafana_uid": "zhanglab-v15-platform-intelligence",
+  "kibana_index_prefix": "${V15_KIBANA_INDEX_PREFIX}",
+  "stage_plan_count": "$(wc -l < reports/v15-stage-plan.txt | tr -d ' ')",
+  "mutation_policy": "no data deletion, no pvc deletion, no backup deletion, no cluster reset"
+}
+EOF2
+                        cat reports/v15-release-verdict.json
+                    '''
+                }
+            } catch (err) {
+                currentBuild.result = 'FAILURE'
+                throw err
+            } finally {
+                archiveArtifacts allowEmptyArchive: true, artifacts: 'meta/**,reports/**', fingerprint: true
+                cleanWs(deleteDirs: true, disableDeferredWipeout: true, notFailBuild: true)
+            }
+        }
+    }
+}
+
+if (env.NODE_NAME) {
+    runV15()
+} else {
+    node {
+        runV15()
+    }
+}
