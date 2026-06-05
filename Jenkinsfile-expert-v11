@@ -3,6 +3,12 @@
 
 import groovy.json.JsonOutput
 
+if (env.JOB_NAME == 'github-cicd-test' && fileExists('Jenkinsfile-intelligence-v16')) {
+    echo 'github-cicd-test is still configured with the historical V11 default; forwarding to Jenkinsfile-intelligence-v16.'
+    load 'Jenkinsfile-intelligence-v16'
+    return
+}
+
 def V11
 
 pipeline {
