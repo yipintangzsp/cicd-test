@@ -2,6 +2,7 @@
 // The selected Jenkinsfile remains self-contained and is loaded after checkout.
 
 def pipelineVersions = [
+    'Jenkinsfile-intelligence-v16',
     'Jenkinsfile-intelligence-v15',
     'Jenkinsfile-intelligence-v14',
     'Jenkinsfile-epoch-v13',
@@ -87,6 +88,19 @@ properties([
         string(name: 'V14_PORTAL_SERVICE_NAME', defaultValue: 'platform-era-v13-portal', description: '[v14] Reuse the current public portal service unless intentionally separated.'),
         string(name: 'V14_PORTAL_APP_LABEL', defaultValue: 'platform-era-v13-portal', description: '[v14] Portal pod label used by the service selector.'),
         string(name: 'V14_PORTAL_NODEPORT', defaultValue: '30089', description: '[v14] Public portal NodePort behind Cloudflare.'),
+        booleanParam(name: 'V16_PUBLISH_PORTAL', defaultValue: true, description: '[v16] Publish the V16 Cloud DataOps role matrix portal.'),
+        booleanParam(name: 'V16_IMPORT_OBSERVABILITY_ASSETS', defaultValue: true, description: '[v16] Import V16 Elasticsearch, Kibana and Grafana role-fit assets.'),
+        booleanParam(name: 'V16_STRICT_RISK_GATE', defaultValue: false, description: '[v16] Keep false unless high-risk findings should fail the build.'),
+        booleanParam(name: 'V16_RUN_V15_FOUNDATION', defaultValue: false, description: '[v16] Default false: inherit live V15 evidence instead of rerunning full V15.'),
+        string(name: 'V16_GRAFANA_DASHBOARD_TITLE', defaultValue: 'ZhangLab V16 Cloud DataOps Role Matrix', description: '[v16] Grafana dashboard title.'),
+        string(name: 'V16_KIBANA_INDEX_PREFIX', defaultValue: 'jenkins-v16-cloud-dataops', description: '[v16] Kibana/Elasticsearch index prefix.'),
+        string(name: 'V16_PORTAL_NAMESPACE', defaultValue: 'ns-apps', description: '[v16] Portal namespace.'),
+        string(name: 'V16_PORTAL_SERVICE_NAME', defaultValue: 'platform-era-v13-portal', description: '[v16] Reuse public portal service unless intentionally separated.'),
+        string(name: 'V16_PORTAL_APP_LABEL', defaultValue: 'platform-era-v13-portal', description: '[v16] Portal pod label used by the service selector.'),
+        string(name: 'V16_PORTAL_NODEPORT', defaultValue: '30089', description: '[v16] Public portal NodePort behind Cloudflare.'),
+        booleanParam(name: 'V16_PROMOTE_LEGACY_PUBLIC_NODEPORT', defaultValue: true, description: '[v16] Promote legacy Cloudflare-facing 30087 service to V16 after V16 portal is ready.'),
+        string(name: 'V16_LEGACY_PUBLIC_SERVICE_NAME', defaultValue: 'hello-app-v10-portal', description: '[v16] Existing service currently used by Cloudflare public route.'),
+        string(name: 'V16_LEGACY_PUBLIC_NODEPORT', defaultValue: '30087', description: '[v16] Existing public NodePort currently serving the Cloudflare route.'),
         booleanParam(name: 'V15_PUBLISH_PORTAL', defaultValue: true, description: '[v15] Publish the V15 autonomous DataOps portal.'),
         booleanParam(name: 'V15_IMPORT_OBSERVABILITY_ASSETS', defaultValue: true, description: '[v15] Import V15 Elasticsearch, Kibana and Grafana autonomous assets.'),
         booleanParam(name: 'V15_STRICT_RISK_GATE', defaultValue: false, description: '[v15] Keep false unless high-risk findings should fail the build.'),
@@ -109,7 +123,12 @@ properties([
 node {
     stage('Select Jenkinsfile') {
         checkout scm
-        def selected = (params.PIPELINE_VERSION ?: 'Jenkinsfile-intelligence-v15').trim()
+        def latest = pipelineVersions[0]
+        def selected = (params.PIPELINE_VERSION ?: latest).trim()
+        if (selected == 'Jenkinsfile-intelligence-v15' && latest == 'Jenkinsfile-intelligence-v16' && fileExists(latest)) {
+            echo "PIPELINE_VERSION resolved to the previous default ${selected}; promoting this run to ${latest}. Jenkins choices still keep older versions after the parameter UI refreshes."
+            selected = latest
+        }
         if (!pipelineVersions.contains(selected)) {
             error "Unsupported PIPELINE_VERSION: ${selected}"
         }
