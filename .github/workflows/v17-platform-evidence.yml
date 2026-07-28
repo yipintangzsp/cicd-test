@@ -1,0 +1,41 @@
+name: V17 Platform Evidence
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'ci/v17_platform_talent.mjs'
+      - 'platform/v17/**'
+      - 'reports/v16-stage-plan.txt'
+      - '.github/workflows/v17-platform-evidence.yml'
+  pull_request:
+    paths:
+      - 'ci/v17_platform_talent.mjs'
+      - 'platform/v17/**'
+      - 'reports/v16-stage-plan.txt'
+      - '.github/workflows/v17-platform-evidence.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  evidence:
+    name: Build and lint V17 evidence
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build V17 evidence
+        run: node ci/v17_platform_talent.mjs build
+      - name: Lint V17 evidence
+        run: node ci/v17_platform_talent.mjs lint
+      - name: Upload V17 evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: v17-platform-evidence
+          path: reports/v17-*
+          if-no-files-found: error

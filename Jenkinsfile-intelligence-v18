@@ -1,0 +1,133 @@
+// V18 Universal Service Fabric: complete runtime service inventory,
+// explicit big-data coverage, and vector evidence charts.
+
+def v18Domains = [
+    ['platform-inventory', '全平台服务目录'], ['runtime-evidence', '运行时证据'], ['service-health', '服务健康'], ['service-dependency', '服务依赖'], ['delivery', 'CI/CD 交付'], ['source-governance', '源码治理'], ['cluster-core', '集群核心'], ['network', '网络入口'], ['gitops', 'GitOps 与 IaC'], ['automation', '自动化运维'], ['supply-chain', '供应链安全'], ['secrets', '密钥治理'], ['observability', '可观测性'], ['slo', 'SLO 与告警'], ['incident', '事件响应'], ['finops', '容量与成本'], ['data-ingestion', '数据摄入'], ['data-streaming', '实时流处理'], ['data-batch', '批处理'], ['data-orchestration', '数据编排'], ['data-lake', '对象湖与存储'], ['data-query', '联邦查询'], ['data-bi', '业务分析'], ['data-quality', '数据质量'], ['release-assurance', '发布验收']
+]
+def v18Controls = ['边界', 'Owner', '服务发现', '资源关联', '配置契约', '版本锁定', '接口', '身份', '网络', '存储', '数据契约', '可用性', '延迟', '吞吐', '错误率', '容量', '成本', '日志', '指标', '追踪', '告警', 'SLO', '探针', '备份', '恢复', '故障演练', '风险', '预防', '纠正', '回滚', '变更影响', '审计', '权限', '供应链', 'SBOM', '签名', '质量门禁', '运行证据', '招聘映射', '英文交接', '可视化', '图表校验', '覆盖复核', '审批', '归档', '验收']
+def v18Stages = []
+v18Domains.each { domain ->
+    v18Controls.each { control ->
+        def number = String.format('%04d', v18Stages.size() + 1)
+        v18Stages << ["V18.${number} ${domain[1]} - ${control}", "stage-${number}"]
+    }
+}
+
+node {
+    properties([
+        disableConcurrentBuilds(),
+        buildDiscarder(logRotator(numToKeepStr: '30', artifactNumToKeepStr: '20')),
+        parameters([
+            booleanParam(name: 'V18_REQUIRE_LIVE_SERVICE_COVERAGE', defaultValue: true, description: '[v18] Require live Kubernetes capture and 100% resource-to-service coverage.'),
+            string(name: 'V18_GRAFANA_DASHBOARD_TITLE', defaultValue: 'ZhangLab V18 Universal Service Fabric', description: '[v18] Grafana dashboard title.')
+        ])
+    ])
+
+    try {
+        stage('V18.00 Checkout') {
+            if (binding.variables.containsKey('scm')) {
+                checkout scm
+            } else {
+                echo 'Reusing the isolated workspace prepared by the GitHub version router.'
+            }
+            sh '''
+                set -eu
+                test -f ci/v18_universal_fabric.mjs
+                test -f platform/v18/service-coverage-contract.md
+                mkdir -p meta reports/v18-runtime-capture reports/v18-universal-ledger/stages
+            '''
+        }
+
+        stage('V18.01 Full runtime service capture') {
+            sh '''
+                set -eu
+                capture_json() {
+                  title="$1"
+                  output="$2"
+                  shift 2
+                  attempt=1
+                  max_attempts=3
+                  while [ "$attempt" -le "$max_attempts" ]; do
+                    if "$@" > "$output" 2>"${output}.err"; then
+                      if [ "$attempt" -gt 1 ]; then
+                        echo "V18 ${title} capture recovered on attempt ${attempt}/${max_attempts}"
+                      fi
+                      return 0
+                    fi
+
+                    echo "V18 ${title} capture attempt ${attempt}/${max_attempts} failed" >&2
+                    tail -n 20 "${output}.err" >&2 || true
+                    if [ "$attempt" -lt "$max_attempts" ]; then
+                      sleep $((attempt * 2))
+                    fi
+                    attempt=$((attempt + 1))
+                  done
+
+                  printf '{"apiVersion":"v1","items":[],"captureWarning":"%s capture failed"}\n' "$title" > "$output"
+                  return 1
+                }
+                failures=0
+                capture_json pods meta/v18-pods-live.json kubectl get pods -A -o json || failures=$((failures+1))
+                capture_json services meta/v18-services-live.json kubectl get svc -A -o json || failures=$((failures+1))
+                capture_json endpoints meta/v18-endpoints-live.json kubectl get endpoints -A -o json || failures=$((failures+1))
+                capture_json endpointslices meta/v18-endpointslices-live.json kubectl get endpointslice -A -o json || failures=$((failures+1))
+                capture_json workloads meta/v18-workloads-live.json kubectl get deploy,statefulset,daemonset -A -o json || failures=$((failures+1))
+                capture_json cronjobs meta/v18-cronjobs-live.json kubectl get cronjob -A -o json || failures=$((failures+1))
+                capture_json jobs meta/v18-jobs-live.json kubectl get job -A -o json || failures=$((failures+1))
+                capture_json ingress meta/v18-ingress-live.json kubectl get ingress -A -o json || failures=$((failures+1))
+                if kubectl get sparkapplications.sparkoperator.k8s.io,flinkdeployments.flink.apache.org -A -o json > meta/v18-data-crds-live.json 2>meta/v18-data-crds-live.err; then true; else printf '{"apiVersion":"v1","items":[]}\n' > meta/v18-data-crds-live.json; fi
+                kubectl get nodes -o json > meta/v18-nodes-live.json 2>meta/v18-nodes-live.err || true
+                kubectl api-resources --verbs=list -o name > meta/v18-api-resources.txt 2>meta/v18-api-resources.err || true
+                if [ "${V18_REQUIRE_LIVE_SERVICE_COVERAGE:-true}" = "true" ] && [ "$failures" -gt 0 ]; then
+                  echo "V18 requires a live service capture; failures=$failures" >&2
+                  exit 1
+                fi
+            '''
+        }
+
+        stage('V18.02 Build coverage model and vector diagrams') {
+            sh '''
+                set -eu
+                V18_REQUIRE_LIVE_SERVICE_COVERAGE="${V18_REQUIRE_LIVE_SERVICE_COVERAGE:-true}" node ci/v18_universal_fabric.mjs build
+                test "$(wc -l < reports/v18-stage-plan.txt | tr -d ' ')" -ge 1150
+                test -s reports/v18-diagrams/bigdata-topology.svg
+                test -s reports/v18-diagrams/software-coverage.svg
+            '''
+        }
+
+        stage('V18.03 Validate complete evidence ledger') {
+            sh '''
+                set -eu
+                node ci/v18_universal_fabric.mjs check-all
+                test "$(find reports/v18-universal-ledger/stages -name 'stage-*.json' -type f | wc -l | tr -d ' ')" -eq 1150
+            '''
+        }
+
+        stage('V18.90 Rebuild complete evidence') {
+            sh 'V18_REQUIRE_LIVE_SERVICE_COVERAGE="${V18_REQUIRE_LIVE_SERVICE_COVERAGE:-true}" node ci/v18_universal_fabric.mjs build'
+        }
+
+        stage('V18.91 Full-coverage and isolation gate') {
+            sh '''
+                set -eu
+                node ci/v18_isolation_audit.mjs
+                V18_REQUIRE_LIVE_SERVICE_COVERAGE="${V18_REQUIRE_LIVE_SERVICE_COVERAGE:-true}" node ci/v18_universal_fabric.mjs lint
+                node -e "const p=require('./reports/v18-coverage-gate.json'); if (!p.pass || !p.stageGate.pass || p.coverage.serviceCoveragePercent !== 100) process.exit(1)"
+                test -s reports/v18-service-inventory.json
+                test -s reports/v18-bigdata-coverage.json
+                test -s reports/v18-isolation.json
+                test -s reports/v18-portal/index.html
+                test "$(wc -l < reports/v18-stage-plan.txt | tr -d ' ')" -ge 1150
+                ! grep -RInE 'kubectl[[:space:]]+delete|docker[[:space:]]+system[[:space:]]+prune|helm[[:space:]]+uninstall|git[[:space:]]+reset[[:space:]]+--hard' Jenkinsfile-intelligence-v18 ci/v18_universal_fabric.mjs platform/v18
+            '''
+        }
+
+        stage('V18.92 Archive clear visual evidence') {
+            archiveArtifacts artifacts: 'reports/v18-universal-ledger/**,reports/v18-diagrams/**,reports/v18-portal/**,reports/v18-service-inventory.json,reports/v18-software-activation.json,reports/v18-bigdata-coverage.json,reports/v18-coverage-gate.json,reports/v18-evidence.json,reports/v18-isolation.json,reports/v18-observability.ndjson,reports/v18-prometheus-metrics.prom,reports/v18-grafana-dashboard.json,reports/v18-kibana-dashboard.ndjson,reports/v18-stage-plan.txt', fingerprint: true, allowEmptyArchive: false
+        }
+        currentBuild.description = "V18 complete: ${v18Stages.size()} evidence records validated in one bounded process"
+    } catch (err) {
+        currentBuild.description = "V18 failed: ${err.message}"
+        throw err
+    }
+}

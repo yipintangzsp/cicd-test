@@ -1,0 +1,31 @@
+name: V18 Universal Service Evidence
+
+on:
+  push:
+    branches: [main]
+    paths: ['ci/v18_universal_fabric.mjs', 'ci/v18_isolation_audit.mjs', 'platform/v18/**', 'Jenkinsfile-intelligence-v18', 'Jenkinsfile-era-router']
+  pull_request:
+    paths: ['ci/v18_universal_fabric.mjs', 'ci/v18_isolation_audit.mjs', 'platform/v18/**', 'Jenkinsfile-intelligence-v18', 'Jenkinsfile-era-router']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  evidence:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      V18_REQUIRE_LIVE_SERVICE_COVERAGE: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node ci/v18_universal_fabric.mjs build
+      - run: node ci/v18_universal_fabric.mjs lint
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v18-universal-service-evidence
+          path: reports/v18-*
+          if-no-files-found: error

@@ -1,0 +1,14 @@
+---
+# Copy outside the repository and replace host aliases with approved targets.
+# V17 never commits IP addresses, passwords, private keys, or Vault tokens.
+all:
+  children:
+    platform_nodes:
+      hosts:
+        control-plane.example.invalid:
+          ansible_host: 192.0.2.10
+        worker.example.invalid:
+          ansible_host: 192.0.2.11
+      vars:
+        ansible_user: platform-auditor
+        ansible_become: false

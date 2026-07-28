@@ -1,0 +1,113 @@
+// platform-era-v13 entry: v13 and later only.
+// Each selected version keeps its own parameters, workspace, history, artifacts and runtime.
+def versionJobs = [
+    'v18': 'hello-app-v18',
+    'v17': 'hello-app-v17',
+    'v16': 'hello-app-v16',
+    'v15': 'hello-app-v15',
+    'v14': 'hello-app-v14',
+    'v13': 'hello-app-v13',
+]
+
+properties([
+    disableConcurrentBuilds(),
+    buildDiscarder(logRotator(numToKeepStr: '30')),
+    parameters([
+        choice(
+            name: 'PIPELINE_VERSION',
+            choices: versionJobs.keySet() as List,
+            description: 'platform-era-v13 仅负责 v13-v18；提交后只显示所选版本自己的参数。'
+        )
+    ])
+])
+
+def selected = params.PIPELINE_VERSION ?: versionJobs.keySet().first()
+if (!versionJobs.containsKey(selected)) {
+    error "Unsupported PIPELINE_VERSION: ${selected}"
+}
+
+def childJob = versionJobs[selected]
+currentBuild.displayName = "#${env.BUILD_NUMBER} ${selected}"
+currentBuild.description = "platform-era-v13 ${selected} 独立参数与运行边界"
+
+def contract
+node {
+    deleteDir()
+    checkout scm
+    def configPath = "/var/jenkins_home/jobs/${childJob}/config.xml"
+    def contractJson = sh(
+        script: "node ci/jenkins_child_parameter_contract.mjs --config '${configPath}' --version '${selected}'",
+        returnStdout: true
+    ).trim()
+    contract = readJSON(text: contractJson, returnPojo: true)
+    deleteDir()
+}
+
+if (contract.version != selected || contract.source != 'selected-child-job') {
+    error "Invalid parameter contract for ${selected}"
+}
+
+def promptParameters = contract.parameters.collect { spec ->
+    def rawDescription = spec.description ?: spec.name
+    def description = rawDescription.toLowerCase().startsWith("[${selected.toLowerCase()}]")
+        ? rawDescription
+        : "[${selected}] ${rawDescription}"
+    switch (spec.type) {
+        case 'boolean':
+            return booleanParam(
+                name: spec.name,
+                defaultValue: spec.defaultValue as boolean,
+                description: description
+            )
+        case 'choice':
+            return choice(
+                name: spec.name,
+                choices: spec.choices as List,
+                description: description
+            )
+        case 'string':
+            return string(
+                name: spec.name,
+                defaultValue: spec.defaultValue ?: '',
+                description: description,
+                trim: false
+            )
+        default:
+            error "Unsupported parameter type ${spec.type} for ${spec.name}"
+    }
+}
+
+def submitted = [:]
+if (!promptParameters.isEmpty()) {
+    def response
+    timeout(time: 30, unit: 'MINUTES') {
+        response = input(
+            id: "parameters-${selected.replaceAll('[^A-Za-z0-9_-]', '-')}",
+            message: "已选择 ${selected}；以下只显示 ${selected} 自己的参数。",
+            ok: "运行 ${selected}",
+            parameters: promptParameters
+        )
+    }
+    submitted = response instanceof Map
+        ? response
+        : [(contract.parameters[0].name): response]
+}
+
+def childParameters = contract.parameters.collect { spec ->
+    def value = submitted.containsKey(spec.name) ? submitted[spec.name] : spec.defaultValue
+    if (spec.type == 'boolean') {
+        return booleanParam(name: spec.name, value: value as boolean)
+    }
+    return string(name: spec.name, value: value == null ? '' : "${value}")
+}
+
+echo "Dispatching ${selected} to isolated runtime ${childJob}"
+timeout(time: 300, unit: 'MINUTES') {
+    build(
+        job: childJob,
+        parameters: childParameters,
+        wait: true,
+        propagate: true,
+        quietPeriod: 0
+    )
+}

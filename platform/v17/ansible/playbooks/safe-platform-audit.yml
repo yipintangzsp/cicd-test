@@ -1,0 +1,39 @@
+---
+# This playbook is deliberately observational.  It must remain safe to run
+# against any approved inventory: no package, service, file, user, or network
+# configuration is changed.
+- name: Collect non-destructive platform facts
+  hosts: platform_nodes
+  gather_facts: true
+  become: false
+  tasks:
+    - name: Capture hostname and kernel
+      ansible.builtin.command: uname -a
+      register: kernel_facts
+      changed_when: false
+
+    - name: Capture filesystem headroom
+      ansible.builtin.command: df -h /
+      register: root_filesystem
+      changed_when: false
+
+    - name: Capture container runtime process evidence
+      ansible.builtin.command: ps -eo comm
+      register: process_names
+      changed_when: false
+
+    - name: Assert that the evidence commands completed
+      ansible.builtin.assert:
+        that:
+          - kernel_facts.rc == 0
+          - root_filesystem.rc == 0
+          - process_names.rc == 0
+        quiet: true
+
+    - name: Emit a compact audit summary
+      ansible.builtin.debug:
+        msg:
+          host: "{{ inventory_hostname }}"
+          kernel: "{{ kernel_facts.stdout }}"
+          root_filesystem: "{{ root_filesystem.stdout_lines }}"
+          runtime_processes: "{{ process_names.stdout_lines | select('match', '^(containerd|k3s|docker)$') | list }}"

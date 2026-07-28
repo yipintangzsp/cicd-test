@@ -1,0 +1,178 @@
+// V17 Workforce-Ready Platform.
+// This version is intentionally evidence-first: it audits every known platform
+// component, tracks current hiring signals and adds reviewable extension assets.
+// It does not mutate the cluster by default.
+
+def v17Domains = [
+    ['baseline', 'V17 独立基线'], ['runtime-inventory', '运行时全量软件盘点'], ['software-usage', '软件使用路径'], ['market-research', '最新招聘信号'],
+    ['developer-experience', '开发者体验与黄金路径'], ['ci-cd', '多 CI/CD 编排'], ['source-governance', '源码协作治理'], ['cloud-runtime', '容器云运行时'],
+    ['iac-gitops', 'IaC 与 GitOps'], ['configuration', 'Ansible 配置自动化'], ['secrets', 'Vault 密钥治理'], ['supply-chain', 'SBOM 与供应链'],
+    ['observability', 'Metrics Logs Traces 可观测性'], ['reliability', 'SLO 与可靠性'], ['incident-response', '事件响应与复盘'], ['network', '云网络与公网入口'],
+    ['data-ingestion', '数据摄入'], ['data-processing', '流批计算'], ['etl-orchestration', 'ETL 编排'], ['query-bi', '查询与商业分析'],
+    ['security-quality', '安全质量门禁'], ['finops', '成本与容量治理'], ['release', '发布验收与证据归档']
+]
+def v17Controls = ['边界定义', '接口契约', '依赖清单', '版本锁定', '配置校验', '只读发现', '运行证据', '质量门禁', '安全门禁', 'SBOM 追溯', 'SLO 指标', '告警路由', '风险识别', '预防措施', '纠正方案', '回滚路径', 'Owner 交接', '英文摘要', '招聘映射', '验收归档']
+def v17Stages = []
+v17Domains.each { domain ->
+    v17Controls.each { control ->
+        def stageNumber = String.format('%03d', v17Stages.size() + 1)
+        v17Stages << ["V17.${stageNumber} ${domain[1]} - ${control}", "stage-${String.format('%04d', v17Stages.size() + 1)}"]
+    }
+}
+
+node {
+    properties([
+        disableConcurrentBuilds(),
+        buildDiscarder(logRotator(numToKeepStr: '30', artifactNumToKeepStr: '20')),
+        parameters([
+            booleanParam(name: 'V17_RUN_RUNTIME_CAPTURE', defaultValue: true, description: '[v17] Capture a read-only live software/runtime inventory.'),
+            booleanParam(name: 'V17_VALIDATE_EXTENSION_MANIFESTS', defaultValue: false, description: '[v17] Run server-side dry-run validation for extension manifests.'),
+            string(name: 'V17_GRAFANA_DASHBOARD_TITLE', defaultValue: 'ZhangLab V17 Workforce-Ready Platform', description: '[v17] Grafana dashboard title.')
+        ])
+    ])
+
+    try {
+        stage('V17.00 Checkout and version lineage') {
+            if (binding.variables.containsKey('scm')) {
+                checkout scm
+            } else {
+                echo 'Reusing the isolated workspace prepared by the GitHub version router.'
+            }
+            sh '''
+                set -eu
+                test -f ci/v17_platform_talent.mjs
+                mkdir -p meta reports/v17-runtime-capture reports/v17-workforce/stages
+                echo 'V17 runtime, workspace, parameters and artifacts are independent.' > reports/v17-runtime-capture/independence.note
+            '''
+        }
+
+        stage('V17.01 Read-only runtime software inventory') {
+            if (params.V17_RUN_RUNTIME_CAPTURE) {
+                sh '''
+                    set -eu
+                    capture_json() {
+                      title="$1"
+                      output="$2"
+                      shift 2
+                      if "$@" > "$output" 2>"${output}.err"; then
+                        return 0
+                      fi
+                      printf '{"apiVersion":"v1","items":[],"captureWarning":"%s capture unavailable"}\n' "$title" > "$output"
+                    }
+                    capture_json pods meta/v17-pods-live.json kubectl get pods -A -o json
+                    capture_json services meta/v17-services-live.json kubectl get svc -A -o json
+                    capture_json workloads meta/v17-workloads-live.json kubectl get deploy,statefulset,daemonset -A -o json
+                    capture_json namespaces meta/v17-namespaces-live.json kubectl get ns -o json
+                    capture_json crds meta/v17-crds-live.json kubectl get crd -o json
+                    capture_json helm-releases meta/v17-helm-releases.json helm list -A -o json
+                    kubectl api-resources --verbs=list -o name > meta/v17-api-resources.txt 2>meta/v17-api-resources.err || true
+                    command -v docker > meta/v17-docker.path 2>/dev/null || true
+                    command -v ctr > meta/v17-ctr.path 2>/dev/null || true
+                    command -v crictl > meta/v17-crictl.path 2>/dev/null || true
+                    command -v ansible-playbook > meta/v17-ansible.path 2>/dev/null || true
+                    command -v syft > meta/v17-syft.path 2>/dev/null || true
+                    command -v terraform > meta/v17-terraform.path 2>/dev/null || true
+                    command -v tofu > meta/v17-tofu.path 2>/dev/null || true
+                    command -v cosign > meta/v17-cosign.path 2>/dev/null || true
+                    command -v kubeconform > meta/v17-kubeconform.path 2>/dev/null || true
+                    echo 'V17 deliberately does not fetch another version portal; lineage is source-only and all runtime evidence is captured in this run.' > reports/v17-runtime-capture/remote-portal-evidence.warning
+                '''
+            } else {
+                sh 'echo V17_RUN_RUNTIME_CAPTURE=false > reports/v17-runtime-capture/skipped.txt'
+            }
+        }
+
+        stage('V17.02 Extension definition validation') {
+            sh '''
+                set -eu
+                test -f platform/v17/ansible/playbooks/safe-platform-audit.yml
+                test -f platform/v17/kustomization.yaml
+                test -f platform/v17/otel/collector.yaml
+                test -f platform/v17/supply-chain/sbom-contract.md
+                test -f platform/v17/supply-chain/signing-contract.md
+                test -f platform/v17/validation/kubeconform-contract.md
+                test -f platform/v17/alerting/dingtalk-contract.md
+                test -f platform/v17/vault/adoption-gate.md
+                test -f .github/workflows/v17-platform-evidence.yml
+                if command -v ansible-playbook >/dev/null 2>&1; then
+                  ansible-playbook --syntax-check -i platform/v17/ansible/inventory.example.yml platform/v17/ansible/playbooks/safe-platform-audit.yml
+                else
+                  echo 'ansible-playbook unavailable; syntax validation deferred' > reports/v17-runtime-capture/ansible-validation.txt
+                fi
+                if kubectl kustomize platform/v17 > reports/v17-runtime-capture/v17-extension.rendered.yaml 2>reports/v17-runtime-capture/kustomize.err; then
+                  true
+                else
+                  echo 'kubectl kustomize unavailable or render failed; see kustomize.err' >&2
+                fi
+                if command -v kubeconform >/dev/null 2>&1 && test -s reports/v17-runtime-capture/v17-extension.rendered.yaml; then
+                  kubeconform -strict -summary reports/v17-runtime-capture/v17-extension.rendered.yaml > reports/v17-runtime-capture/kubeconform.txt
+                else
+                  echo 'kubeconform unavailable or render not present; schema validation deferred' > reports/v17-runtime-capture/kubeconform.txt
+                fi
+            '''
+        }
+
+        stage('V17.03 V17 stage plan and complexity proof') {
+            sh '''
+                set -eu
+                node ci/v17_platform_talent.mjs build
+                ACTUAL=$(wc -l < reports/v17-stage-plan.txt | tr -d ' ')
+                [ "$ACTUAL" -ge 460 ] || { echo "V17 stage count too low: $ACTUAL"; exit 1; }
+                node -e "const p=require('./reports/v17-complexity-proof.json'); if (!p.pass || p.increasePercent < 100) process.exit(1)"
+            '''
+        }
+
+        v17Stages.each { item ->
+            stage(item[0]) {
+                env.V17_STAGE_KEY = item[1]
+                env.V17_STAGE_TITLE = item[0]
+                sh 'node ci/v17_platform_talent.mjs check "$V17_STAGE_KEY" "$V17_STAGE_TITLE"'
+            }
+        }
+
+        stage('V17.90 Rebuild complete V17 evidence') {
+            sh 'node ci/v17_platform_talent.mjs build'
+        }
+
+        stage('V17.91 Quality and safety gate') {
+            sh '''
+                set -eu
+                node ci/v17_platform_talent.mjs lint
+                test -s reports/v17-evidence.json
+                test -s reports/v17-software-inventory.json
+                test -s reports/v17-version-lineage.json
+                test -s reports/v17-market-recruitment.json
+                test -s reports/v17-extension-plan.json
+                test -s reports/v17-complexity-proof.json
+                test -s reports/v17-observability.ndjson
+                test -s reports/v17-prometheus-metrics.prom
+                test -s reports/v17-grafana-dashboard.json
+                test -s reports/v17-kibana-dashboard.ndjson
+                test -s reports/v17-portal/index.html
+                test "$(wc -l < reports/v17-stage-plan.txt | tr -d ' ')" -ge 460
+                ! grep -RInE 'kubectl[[:space:]]+delete|docker[[:space:]]+system[[:space:]]+prune|helm[[:space:]]+uninstall|git[[:space:]]+reset[[:space:]]+--hard' Jenkinsfile-intelligence-v17 ci/v17_platform_talent.mjs platform/v17
+            '''
+        }
+
+        stage('V17.92 Optional server-side extension validation') {
+            if (params.V17_VALIDATE_EXTENSION_MANIFESTS) {
+                sh '''
+                    set -eu
+                    # Server-side dry-run validates admission and schemas without persisting resources.
+                    kubectl apply --server-side --dry-run=server -k platform/v17 > reports/v17-runtime-capture/extension-server-dry-run.txt
+                '''
+            } else {
+                sh 'echo V17_VALIDATE_EXTENSION_MANIFESTS=false > reports/v17-runtime-capture/extension-server-dry-run.skipped'
+            }
+        }
+
+        stage('V17.93 Archive recruitment and platform evidence') {
+            archiveArtifacts artifacts: 'reports/v17-*/**,reports/v17-*.json,reports/v17-*.ndjson,reports/v17-*.prom', fingerprint: true, allowEmptyArchive: false
+        }
+
+        currentBuild.description = "V17 complete: ${v17Stages.size()} independent evidence stages"
+    } catch (err) {
+        currentBuild.description = "V17 failed: ${err.message}"
+        throw err
+    }
+}
