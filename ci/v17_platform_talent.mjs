@@ -267,6 +267,15 @@ function recordCheck(key, title) {
   console.log(`v17_stage=${key} score=${doc.score}`);
 }
 
+function recordAllChecks() {
+  stages().forEach((row, index) => {
+    const key = `stage-${String(index + 1).padStart(4, '0')}`;
+    const title = `V17.${String(index + 1).padStart(3, '0')} ${row.title}`;
+    recordCheck(key, title);
+  });
+  console.log(`v17_batch_validation=ok validated=${stages().length}`);
+}
+
 function ensureLedger(stageRows) {
   const current = readLines('reports/v17-workforce/stage-ledger.ndjson').map((line) => readJsonLine(line)).filter(Boolean);
   const byKey = new Map(current.map((row) => [row.key, row]));
@@ -385,6 +394,7 @@ function lintAll() {
 }
 
 if (action === 'check') recordCheck(checkKey, checkTitle);
+else if (action === 'check-all') recordAllChecks();
 else if (action === 'build') buildAll();
 else if (action === 'lint') lintAll();
 else throw new Error(`Unsupported V17 action: ${action}`);

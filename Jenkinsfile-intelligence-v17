@@ -118,12 +118,8 @@ node {
             '''
         }
 
-        v17Stages.each { item ->
-            stage(item[0]) {
-                env.V17_STAGE_KEY = item[1]
-                env.V17_STAGE_TITLE = item[0]
-                sh 'node ci/v17_platform_talent.mjs check "$V17_STAGE_KEY" "$V17_STAGE_TITLE"'
-            }
+        stage('V17.04 Validate 460 evidence records in one bounded process') {
+            sh 'node ci/v17_platform_talent.mjs check-all'
         }
 
         stage('V17.90 Rebuild complete V17 evidence') {
