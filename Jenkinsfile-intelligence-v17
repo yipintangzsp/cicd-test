@@ -33,11 +33,7 @@ node {
 
     try {
         stage('V17.00 Checkout and version lineage') {
-            if (binding.variables.containsKey('scm')) {
-                checkout scm
-            } else {
-                echo 'Reusing the isolated workspace prepared by the GitHub version router.'
-            }
+            checkout scm
             sh '''
                 set -eu
                 test -f ci/v17_platform_talent.mjs

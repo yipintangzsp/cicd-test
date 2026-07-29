@@ -25,11 +25,7 @@ node {
 
     try {
         stage('V18.00 Checkout') {
-            if (binding.variables.containsKey('scm')) {
-                checkout scm
-            } else {
-                echo 'Reusing the isolated workspace prepared by the GitHub version router.'
-            }
+            checkout scm
             sh '''
                 set -eu
                 test -f ci/v18_universal_fabric.mjs
